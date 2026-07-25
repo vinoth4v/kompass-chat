@@ -3,20 +3,44 @@
 // /v1/messages dialect directly.
 
 export type LaneChoice =
-  | 'kompass'
-  | 'kompass-fast'
-  | 'kompass-simple'
-  | 'kompass-agentic'
-  | 'kompass-hard'
-  | 'kompass-longctx';
+  | "kompass"
+  | "kompass-fast"
+  | "kompass-simple"
+  | "kompass-agentic"
+  | "kompass-hard"
+  | "kompass-longctx";
 
-export const LANE_CHOICES: { value: LaneChoice; label: string; hint: string }[] = [
-  { value: 'kompass', label: 'Auto', hint: 'classifier picks the lane by task complexity' },
-  { value: 'kompass-fast', label: 'Fast', hint: 'small, instant — quick questions' },
-  { value: 'kompass-simple', label: 'Simple', hint: 'everyday edits and answers' },
-  { value: 'kompass-agentic', label: 'Agentic', hint: 'best free tool-calling models' },
-  { value: 'kompass-hard', label: 'Hard', hint: 'max free reasoning' },
-  { value: 'kompass-longctx', label: 'Long context', hint: '>60k-token contexts, 1M window' },
+export const LANE_CHOICES: {
+  value: LaneChoice;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "kompass",
+    label: "Auto",
+    hint: "classifier picks the lane by task complexity",
+  },
+  {
+    value: "kompass-fast",
+    label: "Fast",
+    hint: "small, instant — quick questions",
+  },
+  {
+    value: "kompass-simple",
+    label: "Simple",
+    hint: "everyday edits and answers",
+  },
+  {
+    value: "kompass-agentic",
+    label: "Agentic",
+    hint: "best free tool-calling models",
+  },
+  { value: "kompass-hard", label: "Hard", hint: "max free reasoning" },
+  {
+    value: "kompass-longctx",
+    label: "Long context",
+    hint: ">60k-token contexts, 1M window",
+  },
 ];
 
 /**
@@ -30,7 +54,7 @@ export const LANE_CHOICES: { value: LaneChoice; label: string; hint: string }[] 
  *              about are text.
  */
 export interface Attachment {
-  kind: 'image' | 'document' | 'text';
+  kind: "image" | "document" | "text";
   mediaType: string;
   /** base64 payload for image/document; empty for text attachments. */
   data: string;
@@ -45,7 +69,7 @@ export type ImageAttachment = Attachment;
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   /** Plain text content. Rendered as markdown for assistant messages. */
   text: string;
   images?: Attachment[];
@@ -62,7 +86,7 @@ export interface ChatMessage {
   followups?: string[];
 }
 
-export type ConversationMode = 'chat' | 'image' | 'research' | 'council';
+export type ConversationMode = "chat" | "image" | "research" | "council";
 
 export interface Conversation {
   id: string;
@@ -78,11 +102,11 @@ export interface Conversation {
 export interface KompassSettings {
   workerUrl: string;
   bearer: string;
-  theme: 'dark' | 'light';
+  theme: "dark" | "light";
   defaultLane: LaneChoice;
 }
 
-export const DEFAULT_SETTINGS: Omit<KompassSettings, 'workerUrl' | 'bearer'> = {
-  theme: 'light',
-  defaultLane: 'kompass',
+export const DEFAULT_SETTINGS: Omit<KompassSettings, "workerUrl" | "bearer"> = {
+  theme: "light",
+  defaultLane: "kompass",
 };

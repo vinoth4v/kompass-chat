@@ -6,24 +6,24 @@
 // complete answer server-side before replying (buffer-then-emit), so a plain
 // JSON round trip is exactly as fast as consuming an SSE stream would be,
 // without any parsing complexity on this end.
-import type { KompassSettings } from './types';
+import type { KompassSettings } from "./types";
 
 export interface AnthropicTextBlockWire {
-  type: 'text';
+  type: "text";
   text: string;
 }
 export interface AnthropicImageBlockWire {
-  type: 'image';
-  source: { type: 'base64'; media_type: string; data: string };
+  type: "image";
+  source: { type: "base64"; media_type: string; data: string };
 }
 export interface AnthropicToolUseBlockWire {
-  type: 'tool_use';
+  type: "tool_use";
   id: string;
   name: string;
   input: Record<string, unknown>;
 }
 export interface AnthropicToolResultBlockWire {
-  type: 'tool_result';
+  type: "tool_result";
   tool_use_id: string;
   content: string;
   is_error?: boolean;
@@ -31,8 +31,13 @@ export interface AnthropicToolResultBlockWire {
 /** Mirrors the Worker's AnthropicDocumentBlock — PDFs travel as base64 here,
  *  and Gemini reads them natively (src/adapters/gemini.ts). */
 export interface AnthropicDocumentBlockWire {
-  type: 'document';
-  source: { type: 'base64' | 'text' | 'url'; media_type?: string; data?: string; url?: string };
+  type: "document";
+  source: {
+    type: "base64" | "text" | "url";
+    media_type?: string;
+    data?: string;
+    url?: string;
+  };
   title?: string;
 }
 
@@ -44,7 +49,7 @@ export type AnthropicContentBlockWire =
   | AnthropicDocumentBlockWire;
 
 export interface AnthropicMessageWire {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string | AnthropicContentBlockWire[];
 }
 
@@ -64,8 +69,8 @@ export interface SendMessageRequest {
 
 export interface AnthropicResponseWire {
   id: string;
-  type: 'message';
-  role: 'assistant';
+  type: "message";
+  role: "assistant";
   model: string;
   content: Array<AnthropicContentBlockWire>;
   stop_reason: string | null;
@@ -77,17 +82,20 @@ export class KompassApiError extends Error {
   constructor(status: number, message: string) {
     super(message);
     this.status = status;
-    this.name = 'KompassApiError';
+    this.name = "KompassApiError";
   }
 }
 
 function baseUrl(settings: KompassSettings): string {
-  return settings.workerUrl.replace(/\/$/, '');
+  return settings.workerUrl.replace(/\/$/, "");
 }
 
-function headers(settings: KompassSettings, extra?: Record<string, string>): HeadersInit {
+function headers(
+  settings: KompassSettings,
+  extra?: Record<string, string>,
+): HeadersInit {
   return {
-    'content-type': 'application/json',
+    "content-type": "application/json",
     authorization: `Bearer ${settings.bearer}`,
     ...extra,
   };
@@ -100,8 +108,9 @@ async function readErrorMessage(res: Response): Promise<string> {
   } catch {
     // body wasn't JSON — fall through to a generic message
   }
-  if (res.status === 401) return 'Invalid bearer token.';
-  if (res.status === 503) return 'Worker has no config pushed yet (kompass config push).';
+  if (res.status === 401) return "Invalid bearer token.";
+  if (res.status === 503)
+    return "Worker has no config pushed yet (kompass config push).";
   return `Request failed (HTTP ${res.status}).`;
 }
 
@@ -111,7 +120,7 @@ export async function verifyConnection(
   bearer: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const res = await fetch(`${workerUrl.replace(/\/$/, '')}/v1/models`, {
+    const res = await fetch(`${workerUrl.replace(/\/$/, "")}/v1/models`, {
       headers: { authorization: `Bearer ${bearer}` },
     });
     if (!res.ok) return { ok: false, error: await readErrorMessage(res) };
@@ -120,7 +129,7 @@ export async function verifyConnection(
     return {
       ok: false,
       error:
-        'Could not reach the Worker — check the URL, and that it allows cross-origin requests.',
+        "Could not reach the Worker — check the URL, and that it allows cross-origin requests.",
     };
   }
 }
@@ -146,18 +155,19 @@ export async function sendMessage(
   extraHeaders?: Record<string, string>,
 ): Promise<SendMessageResult> {
   const res = await fetch(`${baseUrl(settings)}/v1/messages`, {
-    method: 'POST',
+    method: "POST",
     headers: headers(settings, extraHeaders),
     body: JSON.stringify(req),
     signal,
   });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
   const response = (await res.json()) as AnthropicResponseWire;
   return {
     response,
-    servedBy: res.headers.get('x-kompass-served-by'),
-    lane: res.headers.get('x-kompass-lane'),
-    exhausted: res.headers.get('x-kompass-exhausted') === 'true',
+    servedBy: res.headers.get("x-kompass-served-by"),
+    lane: res.headers.get("x-kompass-lane"),
+    exhausted: res.headers.get("x-kompass-exhausted") === "true",
   };
 }
 
@@ -173,26 +183,30 @@ export async function generateImage(
   signal?: AbortSignal,
 ): Promise<GenerateImageResult> {
   const res = await fetch(`${baseUrl(settings)}/v1/images/generations`, {
-    method: 'POST',
+    method: "POST",
     headers: headers(settings),
     body: JSON.stringify({ prompt }),
     signal,
   });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
   const body = (await res.json()) as {
     data: { b64_json: string }[];
     model: string;
     mime_type: string;
   };
   const first = body.data[0];
-  if (!first) throw new KompassApiError(502, 'No image returned.');
+  if (!first) throw new KompassApiError(502, "No image returned.");
   return { b64: first.b64_json, mime: body.mime_type, model: body.model };
 }
 
 /** Raw /status snapshot — the evidence the council planner composes from. */
 export async function fetchStatus(settings: KompassSettings): Promise<unknown> {
-  const res = await fetch(`${baseUrl(settings)}/status`, { headers: headers(settings) });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  const res = await fetch(`${baseUrl(settings)}/status`, {
+    headers: headers(settings),
+  });
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
   return res.json();
 }
 
@@ -210,9 +224,14 @@ export interface RosterEntry {
  * changes as models are added, demoted and disabled, and a picker offering a
  * disabled model would just produce confusing failures.
  */
-export async function fetchModelRoster(settings: KompassSettings): Promise<RosterEntry[]> {
-  const res = await fetch(`${baseUrl(settings)}/status`, { headers: headers(settings) });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+export async function fetchModelRoster(
+  settings: KompassSettings,
+): Promise<RosterEntry[]> {
+  const res = await fetch(`${baseUrl(settings)}/status`, {
+    headers: headers(settings),
+  });
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
   const body = (await res.json()) as {
     lanes?: Record<string, { chain: string[] }>;
     perf?: Record<string, { rate: number }>;
@@ -227,7 +246,11 @@ export async function fetchModelRoster(settings: KompassSettings): Promise<Roste
       if (existing) {
         if (!existing.lanes.includes(lane)) existing.lanes.push(lane);
       } else {
-        byEntry.set(entry, { entry, rate: body.perf?.[entry]?.rate, lanes: [lane] });
+        byEntry.set(entry, {
+          entry,
+          rate: body.perf?.[entry]?.rate,
+          lanes: [lane],
+        });
       }
     }
   }
@@ -245,9 +268,14 @@ export interface VaultStatus {
   keys: Record<string, { masked: string; ts: number }>;
 }
 
-export async function listVaultKeys(settings: KompassSettings): Promise<VaultStatus> {
-  const res = await fetch(`${baseUrl(settings)}/keys`, { headers: headers(settings) });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+export async function listVaultKeys(
+  settings: KompassSettings,
+): Promise<VaultStatus> {
+  const res = await fetch(`${baseUrl(settings)}/keys`, {
+    headers: headers(settings),
+  });
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
   return (await res.json()) as VaultStatus;
 }
 
@@ -256,21 +284,32 @@ export async function putVaultKey(
   provider: string,
   key: string,
 ): Promise<{ masked: string }> {
-  const res = await fetch(`${baseUrl(settings)}/keys/${encodeURIComponent(provider)}`, {
-    method: 'POST',
-    headers: headers(settings),
-    body: JSON.stringify({ key }),
-  });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  const res = await fetch(
+    `${baseUrl(settings)}/keys/${encodeURIComponent(provider)}`,
+    {
+      method: "POST",
+      headers: headers(settings),
+      body: JSON.stringify({ key }),
+    },
+  );
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
   return (await res.json()) as { masked: string };
 }
 
-export async function deleteVaultKey(settings: KompassSettings, provider: string): Promise<void> {
-  const res = await fetch(`${baseUrl(settings)}/keys/${encodeURIComponent(provider)}`, {
-    method: 'DELETE',
-    headers: headers(settings),
-  });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+export async function deleteVaultKey(
+  settings: KompassSettings,
+  provider: string,
+): Promise<void> {
+  const res = await fetch(
+    `${baseUrl(settings)}/keys/${encodeURIComponent(provider)}`,
+    {
+      method: "DELETE",
+      headers: headers(settings),
+    },
+  );
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
 }
 
 /** Providers the gateway knows about, with signup links for the ones missing. */
@@ -283,9 +322,14 @@ export interface ProviderInfo {
   keyEnv?: string;
 }
 
-export async function listProviders(settings: KompassSettings): Promise<ProviderInfo[]> {
-  const res = await fetch(`${baseUrl(settings)}/status`, { headers: headers(settings) });
-  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+export async function listProviders(
+  settings: KompassSettings,
+): Promise<ProviderInfo[]> {
+  const res = await fetch(`${baseUrl(settings)}/status`, {
+    headers: headers(settings),
+  });
+  if (!res.ok)
+    throw new KompassApiError(res.status, await readErrorMessage(res));
   const body = (await res.json()) as {
     providers?: Record<
       string,

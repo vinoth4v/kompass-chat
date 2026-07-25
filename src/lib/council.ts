@@ -19,13 +19,13 @@ import {
   type AnthropicTextBlockWire,
   type AnthropicToolResultBlockWire,
   type AnthropicToolUseBlockWire,
-} from './kompassClient';
-import type { KompassSettings } from './types';
-import { TOOLS, executeTool, type Source } from './tools';
+} from "./kompassClient";
+import type { KompassSettings } from "./types";
+import { TOOLS, executeTool, type Source } from "./tools";
 
 export type { Source };
 
-export type ResearchDepth = 'fast' | 'deep';
+export type ResearchDepth = "fast" | "deep";
 
 /** One seat on the council. `model` is either a kompass-<lane> name or a
  *  concrete "provider/model" entry, which is forced via x-kompass-model. */
@@ -35,7 +35,8 @@ export interface AgentSpec {
   model: string;
 }
 
-export type AgentPhase = 'queued' | 'searching' | 'reading' | 'thinking' | 'done' | 'failed';
+export type AgentPhase =
+  "queued" | "searching" | "reading" | "thinking" | "done" | "failed";
 
 export interface AgentState {
   spec: AgentSpec;
@@ -75,7 +76,7 @@ export interface CouncilVerdict {
 export interface CouncilRun {
   agents: AgentState[];
   verdict?: CouncilVerdict;
-  judgePhase: 'waiting' | 'deliberating' | 'done' | 'failed';
+  judgePhase: "waiting" | "deliberating" | "done" | "failed";
   judgeError?: string;
 }
 
@@ -83,58 +84,61 @@ const DEPTH: Record<ResearchDepth, { iterations: number; guidance: string }> = {
   fast: {
     iterations: 4,
     guidance:
-      'Work quickly: one or two searches, then read at most two of the most promising pages ' +
-      'before answering.',
+      "Work quickly: one or two searches, then read at most two of the most promising pages " +
+      "before answering.",
   },
   deep: {
     iterations: 7,
     guidance:
-      'Be thorough: search from more than one angle, read three to five pages in full, and ' +
-      'actively look for evidence that CONTRADICTS your initial view before answering.',
+      "Be thorough: search from more than one angle, read three to five pages in full, and " +
+      "actively look for evidence that CONTRADICTS your initial view before answering.",
   },
 };
 
 function agentSystemPrompt(depth: ResearchDepth): string {
   return (
-    'You are one member of a council of independent analysts. You are answering on your own — ' +
-    'you cannot see the other members and must not assume they agree with you. ' +
+    "You are one member of a council of independent analysts. You are answering on your own — " +
+    "you cannot see the other members and must not assume they agree with you. " +
     `${DEPTH[depth].guidance} ` +
-    'Ground every substantive claim in a page you actually fetched. Where the sources conflict, ' +
-    'say so explicitly and state which you find more credible and why. If the evidence is thin, ' +
-    'say that plainly — a hedged answer is far more useful to the council than a confident ' +
-    'invented one. Never cite a URL you did not fetch. ' +
-    'Finish with a clear, self-contained answer in markdown.'
+    "Ground every substantive claim in a page you actually fetched. Where the sources conflict, " +
+    "say so explicitly and state which you find more credible and why. If the evidence is thin, " +
+    "say that plainly — a hedged answer is far more useful to the council than a confident " +
+    "invented one. Never cite a URL you did not fetch. " +
+    "Finish with a clear, self-contained answer in markdown."
   );
 }
 
 const JUDGE_SYSTEM_PROMPT =
-  'You are the Council Judge. Several independent analysts have researched the same question ' +
-  'and each returned an answer plus the list of sources they actually read. Your job is NOT to ' +
-  'redo the research and NOT to average the answers. It is to weigh them.\n\n' +
-  'Do all of the following:\n' +
-  '1. Identify what the analysts agree on.\n' +
-  '2. Identify every material DISAGREEMENT ABOUT THE SUBJECT — differing conclusions, ' +
-  'conflicting facts, incompatible recommendations. Do NOT list process observations such as ' +
+  "You are the Council Judge. Several independent analysts have researched the same question " +
+  "and each returned an answer plus the list of sources they actually read. Your job is NOT to " +
+  "redo the research and NOT to average the answers. It is to weigh them.\n\n" +
+  "Do all of the following:\n" +
+  "1. Identify what the analysts agree on.\n" +
+  "2. Identify every material DISAGREEMENT ABOUT THE SUBJECT — differing conclusions, " +
+  "conflicting facts, incompatible recommendations. Do NOT list process observations such as " +
   '"only one analyst finished" as disagreements; how many analysts reported is not a ' +
-  'disagreement and is already shown to the user separately. For each real one, say which ' +
-  'position the evidence ' +
-  'better supports and why. Do not paper over conflicts — a real disagreement that you surface ' +
-  'is more valuable than a smooth answer that hides it.\n' +
-  '3. Prefer claims backed by sources that were actually fetched. Treat an unsourced confident ' +
-  'claim as weaker than a sourced hedged one.\n' +
-  '4. Note anything important that NO analyst covered, if you can tell.\n\n' +
-  'Reply with a fenced ```json block containing exactly:\n' +
+  "disagreement and is already shown to the user separately. For each real one, say which " +
+  "position the evidence " +
+  "better supports and why. Do not paper over conflicts — a real disagreement that you surface " +
+  "is more valuable than a smooth answer that hides it.\n" +
+  "3. Prefer claims backed by sources that were actually fetched. Treat an unsourced confident " +
+  "claim as weaker than a sourced hedged one.\n" +
+  "4. Note anything important that NO analyst covered, if you can tell.\n\n" +
+  "Reply with a fenced ```json block containing exactly:\n" +
   '{"agreements": ["..."], "disagreements": [{"point": "...", "positions": ["..."]}]}\n' +
-  'Then, after the block, write the final synthesized answer in markdown. Cite sources inline ' +
-  'as [n] matching the numbered source list you were given. The final answer must stand on its ' +
-  'own for someone who never sees the individual analyses.';
+  "Then, after the block, write the final synthesized answer in markdown. Cite sources inline " +
+  "as [n] matching the numbered source list you were given. The final answer must stand on its " +
+  "own for someone who never sees the individual analyses.";
 
 /** Model id for the wire, plus the header that forces a concrete model. */
-function modelRequest(model: string): { model: string; extraHeaders?: Record<string, string> } {
-  if (model.startsWith('kompass')) return { model };
+function modelRequest(model: string): {
+  model: string;
+  extraHeaders?: Record<string, string>;
+} {
+  if (model.startsWith("kompass")) return { model };
   // A concrete provider/model entry: the gateway honours x-kompass-model and
   // skips lane selection entirely.
-  return { model: 'kompass', extraHeaders: { 'x-kompass-model': model } };
+  return { model: "kompass", extraHeaders: { "x-kompass-model": model } };
 }
 
 async function runAgent(
@@ -148,19 +152,21 @@ async function runAgent(
   modelOverride?: string,
 ): Promise<void> {
   const started = Date.now();
-  const { model, extraHeaders } = modelRequest(modelOverride ?? state.spec.model);
+  const { model, extraHeaders } = modelRequest(
+    modelOverride ?? state.spec.model,
+  );
   // Agents were answering from search snippets alone: 3 searches, 0 pages read,
   // zero sources. An answer with no fetched source is precisely what this
   // council must not produce, so it gets pushed back once before being allowed
   // to conclude.
   let nudgedForSources = false;
   let nudgedToFetch = false;
-  const history: AnthropicMessageWire[] = [{ role: 'user', content: question }];
+  const history: AnthropicMessageWire[] = [{ role: "user", content: question }];
   const seenUrls = new Set<string>();
   let totalIn = 0;
   let totalOut = 0;
 
-  state.phase = 'thinking';
+  state.phase = "thinking";
   emit();
 
   for (let iter = 0; iter < DEPTH[depth].iterations; iter++) {
@@ -179,11 +185,11 @@ async function runAgent(
           ? [
               ...history,
               {
-                role: 'user' as const,
+                role: "user" as const,
                 content:
-                  'Stop researching now and give your final answer, grounded in the sources you ' +
-                  'actually fetched. If you fetched none, say so explicitly and answer with ' +
-                  'clearly-flagged low confidence.',
+                  "Stop researching now and give your final answer, grounded in the sources you " +
+                  "actually fetched. If you fetched none, say so explicitly and answer with " +
+                  "clearly-flagged low confidence.",
               },
             ]
           : history,
@@ -197,8 +203,8 @@ async function runAgent(
     // notice as an agent's "finding" is worse than showing no agent at all.
     if (exhausted) {
       throw new Error(
-        'No free model could serve this agent (gateway lanes exhausted). ' +
-          'Fewer agents, fast mode, or a different model per seat usually clears it.',
+        "No free model could serve this agent (gateway lanes exhausted). " +
+          "Fewer agents, fast mode, or a different model per seat usually clears it.",
       );
     }
     state.servedBy = servedBy;
@@ -207,40 +213,44 @@ async function runAgent(
     state.usage = { input: totalIn, output: totalOut };
 
     const toolUses = response.content.filter(
-      (b): b is AnthropicToolUseBlockWire => b.type === 'tool_use',
+      (b): b is AnthropicToolUseBlockWire => b.type === "tool_use",
     );
 
     if (toolUses.length === 0) {
       const draft =
         response.content
-          .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
+          .filter((b): b is AnthropicTextBlockWire => b.type === "text")
           .map((b) => b.text)
-          .join('\n\n') || '(no answer)';
+          .join("\n\n") || "(no answer)";
 
-      if (state.sources.length === 0 && !nudgedForSources && iter < DEPTH[depth].iterations - 1) {
+      if (
+        state.sources.length === 0 &&
+        !nudgedForSources &&
+        iter < DEPTH[depth].iterations - 1
+      ) {
         nudgedForSources = true;
-        history.push({ role: 'assistant', content: response.content });
+        history.push({ role: "assistant", content: response.content });
         history.push({
-          role: 'user',
+          role: "user",
           content:
-            'You have not fetched a single source yet — search snippets alone are not enough to ' +
-            'answer on. Pick the most promising result and call web_fetch on it, then answer ' +
-            'grounded in what you actually read.',
+            "You have not fetched a single source yet — search snippets alone are not enough to " +
+            "answer on. Pick the most promising result and call web_fetch on it, then answer " +
+            "grounded in what you actually read.",
         });
-        state.phase = 'thinking';
+        state.phase = "thinking";
         emit();
         continue;
       }
 
       state.answer = draft;
-      state.phase = 'done';
+      state.phase = "done";
       state.detail = undefined;
       state.elapsedMs = Date.now() - started;
       emit();
       return;
     }
 
-    history.push({ role: 'assistant', content: response.content });
+    history.push({ role: "assistant", content: response.content });
     const results: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
       results.push(
@@ -250,18 +260,18 @@ async function runAgent(
           seenUrls,
           {
             onSearch: (q) => {
-              state.phase = 'searching';
+              state.phase = "searching";
               state.detail = q;
               state.searches++;
               emit();
             },
             onFetch: (u) => {
-              state.phase = 'reading';
+              state.phase = "reading";
               state.detail = u;
               emit();
             },
             onData: (kind, q) => {
-              state.phase = 'reading';
+              state.phase = "reading";
               state.detail = `${kind}: ${q}`;
               emit();
             },
@@ -274,7 +284,7 @@ async function runAgent(
         ),
       );
     }
-    history.push({ role: 'user', content: results });
+    history.push({ role: "user", content: results });
 
     // Searching repeatedly without ever fetching is the observed failure mode:
     // three searches, zero pages, no answer. The earlier nudge only fired when
@@ -282,13 +292,13 @@ async function runAgent(
     if (state.searches >= 2 && state.reads === 0 && !nudgedToFetch) {
       nudgedToFetch = true;
       history.push({
-        role: 'user',
+        role: "user",
         content:
-          'You have searched more than once and fetched nothing. Stop searching. Call web_fetch ' +
-          'on the most promising URL you have already seen, and read it before answering.',
+          "You have searched more than once and fetched nothing. Stop searching. Call web_fetch " +
+          "on the most promising URL you have already seen, and read it before answering.",
       });
     }
-    state.phase = 'thinking';
+    state.phase = "thinking";
     state.detail = undefined;
     emit();
   }
@@ -296,8 +306,8 @@ async function runAgent(
   // Out of iterations: keep whatever was gathered rather than discarding the
   // agent entirely — partial evidence still informs the judge.
   state.answer =
-    'Reached the research step limit before concluding. Partial findings only — treat with caution.';
-  state.phase = 'done';
+    "Reached the research step limit before concluding. Partial findings only — treat with caution.";
+  state.phase = "done";
   state.elapsedMs = Date.now() - started;
   emit();
 }
@@ -317,23 +327,29 @@ function parseJudge(text: string): {
         disagreements?: unknown;
       };
       const agreements = Array.isArray(parsed.agreements)
-        ? parsed.agreements.filter((a): a is string => typeof a === 'string')
+        ? parsed.agreements.filter((a): a is string => typeof a === "string")
         : [];
       const disagreements = Array.isArray(parsed.disagreements)
         ? parsed.disagreements
             .filter(
-              (d): d is { point: unknown; positions: unknown } => !!d && typeof d === 'object',
+              (d): d is { point: unknown; positions: unknown } =>
+                !!d && typeof d === "object",
             )
             .map((d) => ({
-              point: typeof d.point === 'string' ? d.point : '',
+              point: typeof d.point === "string" ? d.point : "",
               positions: Array.isArray(d.positions)
-                ? d.positions.filter((p): p is string => typeof p === 'string')
+                ? d.positions.filter((p): p is string => typeof p === "string")
                 : [],
             }))
             .filter((d) => d.point)
         : [];
       const answer = text.slice(fence.index! + fence[0].length).trim();
-      return { agreements, disagreements, answer: answer || text, degraded: false };
+      return {
+        agreements,
+        disagreements,
+        answer: answer || text,
+        degraded: false,
+      };
     } catch {
       // fall through — a malformed block is not worth failing the whole run over
     }
@@ -363,12 +379,15 @@ async function runJudge(
 
   const brief = agents
     .map((a) => {
-      const cites = a.sources.map((s) => `[${indexOf.get(s.url)}] ${s.url}`).join('\n') || '(none)';
-      return `### ${a.spec.label} (model: ${a.servedBy ?? a.spec.model})\n\nSources actually read:\n${cites}\n\nAnswer:\n${a.answer ?? '(no answer)'}`;
+      const cites =
+        a.sources.map((s) => `[${indexOf.get(s.url)}] ${s.url}`).join("\n") ||
+        "(none)";
+      return `### ${a.spec.label} (model: ${a.servedBy ?? a.spec.model})\n\nSources actually read:\n${cites}\n\nAnswer:\n${a.answer ?? "(no answer)"}`;
     })
-    .join('\n\n---\n\n');
+    .join("\n\n---\n\n");
 
-  const sourceList = sources.map((s, i) => `[${i + 1}] ${s.url}`).join('\n') || '(none)';
+  const sourceList =
+    sources.map((s, i) => `[${i + 1}] ${s.url}`).join("\n") || "(none)";
   const { model, extraHeaders } = modelRequest(judgeModel);
   const { response, servedBy, exhausted } = await sendMessage(
     settings,
@@ -378,7 +397,7 @@ async function runJudge(
       system: JUDGE_SYSTEM_PROMPT,
       messages: [
         {
-          role: 'user',
+          role: "user",
           content: `Question:\n${question}\n\nNumbered sources available to cite:\n${sourceList}\n\nAnalyst reports:\n\n${brief}`,
         },
       ],
@@ -389,14 +408,14 @@ async function runJudge(
 
   if (exhausted) {
     throw new Error(
-      'No free model could serve the judge (gateway lanes exhausted). ' +
-        'The individual agent findings below are unaffected.',
+      "No free model could serve the judge (gateway lanes exhausted). " +
+        "The individual agent findings below are unaffected.",
     );
   }
   const text = response.content
-    .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
+    .filter((b): b is AnthropicTextBlockWire => b.type === "text")
     .map((b) => b.text)
-    .join('\n\n');
+    .join("\n\n");
   const parsed = parseJudge(text);
   return {
     answer: parsed.answer,
@@ -445,10 +464,17 @@ export async function runCouncil({
     return undefined;
   };
   const run: CouncilRun = {
-    agents: agents.map((spec) => ({ spec, phase: 'queued', searches: 0, reads: 0, sources: [] })),
-    judgePhase: 'waiting',
+    agents: agents.map((spec) => ({
+      spec,
+      phase: "queued",
+      searches: 0,
+      reads: 0,
+      sources: [],
+    })),
+    judgePhase: "waiting",
   };
-  const emit = () => onUpdate({ ...run, agents: run.agents.map((a) => ({ ...a })) });
+  const emit = () =>
+    onUpdate({ ...run, agents: run.agents.map((a) => ({ ...a })) });
   emit();
 
   // Staggered start. The seats still run concurrently, but launching five
@@ -465,17 +491,17 @@ export async function runCouncil({
         if (i > 0) {
           await new Promise<void>((resolve, reject) => {
             const t = setTimeout(resolve, i * STAGGER_MS);
-            signal?.addEventListener('abort', () => {
+            signal?.addEventListener("abort", () => {
               clearTimeout(t);
-              reject(new DOMException('aborted', 'AbortError'));
+              reject(new DOMException("aborted", "AbortError"));
             });
           });
         }
         await runAgent(settings, state, question, depth, emit, signal);
       } catch (e) {
-        if (e instanceof DOMException && e.name === 'AbortError') {
-          state.phase = 'failed';
-          state.error = 'cancelled';
+        if (e instanceof DOMException && e.name === "AbortError") {
+          state.phase = "failed";
+          state.error = "cancelled";
           emit();
           throw e;
         }
@@ -484,7 +510,7 @@ export async function runCouncil({
         // seat outright — the router's whole fallback ladder is bypassed. Retry
         // once on lane routing: a seat that answers on a different model is far
         // better than an empty chair, and the card says it fell back.
-        const pinned = !state.spec.model.startsWith('kompass');
+        const pinned = !state.spec.model.startsWith("kompass");
         if (pinned && !state.fellBack) {
           state.fellBack = true;
           state.error = undefined;
@@ -505,17 +531,18 @@ export async function runCouncil({
               depth,
               emit,
               signal,
-              replacement ?? 'kompass-agentic',
+              replacement ?? "kompass-agentic",
             );
             return;
           } catch (e2) {
-            if (e2 instanceof DOMException && e2.name === 'AbortError') throw e2;
+            if (e2 instanceof DOMException && e2.name === "AbortError")
+              throw e2;
             state.error = e2 instanceof Error ? e2.message : String(e2);
           }
         } else {
           state.error = e instanceof Error ? e.message : String(e);
         }
-        state.phase = 'failed';
+        state.phase = "failed";
         state.detail = undefined;
         emit();
       }
@@ -524,34 +551,41 @@ export async function runCouncil({
 
   if (signal?.aborted) return run;
 
-  const usable = run.agents.filter((a) => a.phase === 'done' && a.answer);
+  const usable = run.agents.filter((a) => a.phase === "done" && a.answer);
   if (usable.length === 0) {
-    run.judgePhase = 'failed';
-    run.judgeError = 'Every agent failed — nothing to synthesize.';
+    run.judgePhase = "failed";
+    run.judgeError = "Every agent failed — nothing to synthesize.";
     emit();
     return run;
   }
 
-  run.judgePhase = 'deliberating';
+  run.judgePhase = "deliberating";
   emit();
   try {
-    run.verdict = await runJudge(settings, judgeModel, question, usable, signal);
-    run.judgePhase = 'done';
+    run.verdict = await runJudge(
+      settings,
+      judgeModel,
+      question,
+      usable,
+      signal,
+    );
+    run.judgePhase = "done";
   } catch (first) {
-    if (first instanceof DOMException && first.name === 'AbortError') throw first;
+    if (first instanceof DOMException && first.name === "AbortError")
+      throw first;
     // Same pinning trap the seats hit: a judge pinned to one model has a chain
     // of one, so a cooldown on it ends the whole council with the research
     // already done. Retry once on lane routing before giving up.
     try {
-      if (judgeModel.startsWith('kompass')) throw first;
+      if (judgeModel.startsWith("kompass")) throw first;
       run.verdict = await runJudge(
         settings,
-        claimSpare() ?? 'kompass-agentic',
+        claimSpare() ?? "kompass-agentic",
         question,
         usable,
         signal,
       );
-      run.judgePhase = 'done';
+      run.judgePhase = "done";
       run.judgeError = undefined;
       emit();
       return run;
@@ -559,11 +593,11 @@ export async function runCouncil({
       /* fall through to the original failure below */
     }
   }
-  if (run.judgePhase !== 'done') {
+  if (run.judgePhase !== "done") {
     try {
-      throw new Error(run.judgeError ?? 'judge failed');
+      throw new Error(run.judgeError ?? "judge failed");
     } catch (e) {
-      run.judgePhase = 'failed';
+      run.judgePhase = "failed";
       run.judgeError = e instanceof Error ? e.message : String(e);
       // A dead judge must not throw away the research: the UI still shows every
       // agent's answer and sources, which is most of the value.

@@ -17,18 +17,18 @@ export interface DataResult {
   source: string;
 }
 
-const UA = 'KompassAI/1.0 (https://github.com/vinoth4v/kompass)';
+const UA = "KompassAI/1.0 (https://github.com/vinoth4v/kompass)";
 
 function stripXml(s: string): string {
   return s
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -41,7 +41,7 @@ function stripXml(s: string): string {
 export async function getNews(query: string): Promise<DataResult> {
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
   const res = await fetch(url, {
-    headers: { 'user-agent': UA },
+    headers: { "user-agent": UA },
     signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) throw new Error(`google news HTTP ${res.status}`);
@@ -49,18 +49,22 @@ export async function getNews(query: string): Promise<DataResult> {
   const items: string[] = [];
   for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
     if (items.length >= 10) break;
-    const it = m[1] ?? '';
-    const title = stripXml(/<title>([\s\S]*?)<\/title>/.exec(it)?.[1] ?? '');
-    const link = stripXml(/<link>([\s\S]*?)<\/link>/.exec(it)?.[1] ?? '');
-    const date = stripXml(/<pubDate>([\s\S]*?)<\/pubDate>/.exec(it)?.[1] ?? '');
-    const src = stripXml(/<source[^>]*>([\s\S]*?)<\/source>/.exec(it)?.[1] ?? '');
+    const it = m[1] ?? "";
+    const title = stripXml(/<title>([\s\S]*?)<\/title>/.exec(it)?.[1] ?? "");
+    const link = stripXml(/<link>([\s\S]*?)<\/link>/.exec(it)?.[1] ?? "");
+    const date = stripXml(/<pubDate>([\s\S]*?)<\/pubDate>/.exec(it)?.[1] ?? "");
+    const src = stripXml(
+      /<source[^>]*>([\s\S]*?)<\/source>/.exec(it)?.[1] ?? "",
+    );
     if (!title) continue;
-    items.push(`- ${title}${src ? ` (${src})` : ''}${date ? ` — ${date}` : ''}\n  ${link}`);
+    items.push(
+      `- ${title}${src ? ` (${src})` : ""}${date ? ` — ${date}` : ""}\n  ${link}`,
+    );
   }
-  if (items.length === 0) throw new Error('no news items');
+  if (items.length === 0) throw new Error("no news items");
   return {
-    text: `Google News results for "${query}" (newest first):\n${items.join('\n')}`,
-    source: 'Google News',
+    text: `Google News results for "${query}" (newest first):\n${items.join("\n")}`,
+    source: "Google News",
   };
 }
 
@@ -68,20 +72,25 @@ export async function getNews(query: string): Promise<DataResult> {
 export async function getWeather(place: string): Promise<DataResult> {
   const geo = await fetch(
     `https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(place)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(10_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(10_000) },
   );
   if (!geo.ok) throw new Error(`geocoding HTTP ${geo.status}`);
   const g = (await geo.json()) as {
-    results?: { name: string; country?: string; latitude: number; longitude: number }[];
+    results?: {
+      name: string;
+      country?: string;
+      latitude: number;
+      longitude: number;
+    }[];
   };
   const loc = g.results?.[0];
   if (!loc) throw new Error(`no such place: ${place}`);
 
   const res = await fetch(
     `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}` +
-      '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,wind_speed_10m,weather_code' +
-      '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=3&timezone=auto',
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(10_000) },
+      "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,wind_speed_10m,weather_code" +
+      "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=3&timezone=auto",
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(10_000) },
   );
   if (!res.ok) throw new Error(`forecast HTTP ${res.status}`);
   const w = (await res.json()) as {
@@ -97,36 +106,36 @@ export async function getWeather(place: string): Promise<DataResult> {
   const c = w.current ?? {};
   const u = w.current_units ?? {};
   const lines = [
-    `Weather for ${loc.name}${loc.country ? `, ${loc.country}` : ''} (observed now):`,
-    `- temperature: ${c.temperature_2m}${u.temperature_2m ?? '°C'} (feels like ${c.apparent_temperature}${u.apparent_temperature ?? '°C'})`,
-    `- humidity: ${c.relative_humidity_2m}${u.relative_humidity_2m ?? '%'}`,
-    `- precipitation: ${c.precipitation}${u.precipitation ?? 'mm'}`,
-    `- wind: ${c.wind_speed_10m}${u.wind_speed_10m ?? 'km/h'}`,
+    `Weather for ${loc.name}${loc.country ? `, ${loc.country}` : ""} (observed now):`,
+    `- temperature: ${c.temperature_2m}${u.temperature_2m ?? "°C"} (feels like ${c.apparent_temperature}${u.apparent_temperature ?? "°C"})`,
+    `- humidity: ${c.relative_humidity_2m}${u.relative_humidity_2m ?? "%"}`,
+    `- precipitation: ${c.precipitation}${u.precipitation ?? "mm"}`,
+    `- wind: ${c.wind_speed_10m}${u.wind_speed_10m ?? "km/h"}`,
   ];
   const d = w.daily;
   if (d?.time?.length) {
-    lines.push('Forecast:');
+    lines.push("Forecast:");
     d.time.forEach((day, i) => {
       lines.push(
         `- ${day}: ${d.temperature_2m_min?.[i]}–${d.temperature_2m_max?.[i]}°C, precipitation ${d.precipitation_sum?.[i]}mm`,
       );
     });
   }
-  return { text: lines.join('\n'), source: 'Open-Meteo' };
+  return { text: lines.join("\n"), source: "Open-Meteo" };
 }
 
 /** ESPN's public scoreboard feeds, plus TheSportsDB for team lookups. */
 export async function getSports(query: string): Promise<DataResult> {
   const LEAGUES: Record<string, string> = {
-    premier: 'soccer/eng.1',
-    epl: 'soccer/eng.1',
-    laliga: 'soccer/esp.1',
-    bundesliga: 'soccer/ger.1',
-    'serie a': 'soccer/ita.1',
-    nba: 'basketball/nba',
-    nfl: 'football/nfl',
-    mlb: 'baseball/mlb',
-    nhl: 'hockey/nhl',
+    premier: "soccer/eng.1",
+    epl: "soccer/eng.1",
+    laliga: "soccer/esp.1",
+    bundesliga: "soccer/ger.1",
+    "serie a": "soccer/ita.1",
+    nba: "basketball/nba",
+    nfl: "football/nfl",
+    mlb: "baseball/mlb",
+    nhl: "hockey/nhl",
   };
   const q = query.toLowerCase();
   const league = Object.keys(LEAGUES).find((k) => q.includes(k));
@@ -134,7 +143,7 @@ export async function getSports(query: string): Promise<DataResult> {
   if (league) {
     const res = await fetch(
       `https://site.api.espn.com/apis/site/v2/sports/${LEAGUES[league]}/scoreboard`,
-      { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+      { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
     );
     if (!res.ok) throw new Error(`espn HTTP ${res.status}`);
     const j = (await res.json()) as {
@@ -142,22 +151,29 @@ export async function getSports(query: string): Promise<DataResult> {
         name?: string;
         date?: string;
         status?: { type?: { detail?: string } };
-        competitions?: { competitors?: { team?: { displayName?: string }; score?: string }[] }[];
+        competitions?: {
+          competitors?: { team?: { displayName?: string }; score?: string }[];
+        }[];
       }[];
     };
     const games = (j.events ?? []).slice(0, 10).map((e) => {
       const c = e.competitions?.[0]?.competitors ?? [];
-      const score = c.map((x) => `${x.team?.displayName ?? '?'} ${x.score ?? ''}`).join(' vs ');
-      return `- ${score || e.name} — ${e.status?.type?.detail ?? e.date ?? ''}`;
+      const score = c
+        .map((x) => `${x.team?.displayName ?? "?"} ${x.score ?? ""}`)
+        .join(" vs ");
+      return `- ${score || e.name} — ${e.status?.type?.detail ?? e.date ?? ""}`;
     });
-    if (games.length === 0) throw new Error('no fixtures returned');
-    return { text: `Scoreboard (${league}):\n${games.join('\n')}`, source: 'ESPN' };
+    if (games.length === 0) throw new Error("no fixtures returned");
+    return {
+      text: `Scoreboard (${league}):\n${games.join("\n")}`,
+      source: "ESPN",
+    };
   }
 
   // Team lookup fallback. "3" is TheSportsDB's documented public test key.
   const res = await fetch(
     `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`thesportsdb HTTP ${res.status}`);
   const j = (await res.json()) as {
@@ -173,52 +189,66 @@ export async function getSports(query: string): Promise<DataResult> {
   if (!t) throw new Error(`no team found for "${query}"`);
   return {
     text:
-      `${t.strTeam} — ${t.strLeague ?? 'league unknown'}, formed ${t.intFormedYear ?? '?'}, ` +
-      `stadium ${t.strStadium ?? '?'}.\n${(t.strDescriptionEN ?? '').slice(0, 600)}`,
-    source: 'TheSportsDB',
+      `${t.strTeam} — ${t.strLeague ?? "league unknown"}, formed ${t.intFormedYear ?? "?"}, ` +
+      `stadium ${t.strStadium ?? "?"}.\n${(t.strDescriptionEN ?? "").slice(0, 600)}`,
+    source: "TheSportsDB",
   };
 }
 
 /** ECB reference rates via Frankfurter — authoritative and keyless. */
 export async function getFx(query: string): Promise<DataResult> {
-  const m = /([A-Za-z]{3})\s*(?:to|\/|-|>)?\s*([A-Za-z]{3})?/.exec(query.trim());
-  const from = (m?.[1] ?? 'EUR').toUpperCase();
-  const to = (m?.[2] ?? 'USD').toUpperCase();
-  const res = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`, {
-    headers: { 'user-agent': UA },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(10_000),
-  });
+  const m = /([A-Za-z]{3})\s*(?:to|\/|-|>)?\s*([A-Za-z]{3})?/.exec(
+    query.trim(),
+  );
+  const from = (m?.[1] ?? "EUR").toUpperCase();
+  const to = (m?.[2] ?? "USD").toUpperCase();
+  const res = await fetch(
+    `https://api.frankfurter.app/latest?from=${from}&to=${to}`,
+    {
+      headers: { "user-agent": UA },
+      redirect: "follow",
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
   if (!res.ok) throw new Error(`frankfurter HTTP ${res.status}`);
-  const j = (await res.json()) as { date?: string; base?: string; rates?: Record<string, number> };
+  const j = (await res.json()) as {
+    date?: string;
+    base?: string;
+    rates?: Record<string, number>;
+  };
   const rate = j.rates?.[to];
   if (rate === undefined) throw new Error(`no rate for ${from}->${to}`);
   return {
-    text: `1 ${j.base ?? from} = ${rate} ${to} (ECB reference rate, ${j.date ?? 'latest'})`,
-    source: 'Frankfurter / ECB',
+    text: `1 ${j.base ?? from} = ${rate} ${to} (ECB reference rate, ${j.date ?? "latest"})`,
+    source: "Frankfurter / ECB",
   };
 }
 
 /** CoinGecko public endpoint — keyless for simple price lookups. */
 export async function getCrypto(query: string): Promise<DataResult> {
-  const id = query.trim().toLowerCase().replace(/\s+/g, '-');
+  const id = query.trim().toLowerCase().replace(/\s+/g, "-");
   const res = await fetch(
     `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}` +
-      '&vs_currencies=usd,eur&include_24hr_change=true',
+      "&vs_currencies=usd,eur&include_24hr_change=true",
     {
-      headers: { 'user-agent': UA, accept: 'application/json' },
+      headers: { "user-agent": UA, accept: "application/json" },
       signal: AbortSignal.timeout(10_000),
     },
   );
   if (!res.ok) throw new Error(`coingecko HTTP ${res.status}`);
   const j = (await res.json()) as Record<string, Record<string, number>>;
   const row = j[id];
-  if (!row) throw new Error(`unknown coin id "${id}" (use the CoinGecko id, e.g. "bitcoin")`);
+  if (!row)
+    throw new Error(
+      `unknown coin id "${id}" (use the CoinGecko id, e.g. "bitcoin")`,
+    );
   return {
     text:
       `${id}: $${row.usd} USD / €${row.eur} EUR` +
-      (row.usd_24h_change !== undefined ? ` (24h ${row.usd_24h_change.toFixed(2)}%)` : ''),
-    source: 'CoinGecko',
+      (row.usd_24h_change !== undefined
+        ? ` (24h ${row.usd_24h_change.toFixed(2)}%)`
+        : ""),
+    source: "CoinGecko",
   };
 }
 
@@ -228,7 +258,7 @@ export async function getStock(query: string): Promise<DataResult> {
   const symbol = query.trim().split(/\s+/)[0]!.toUpperCase();
   const res = await fetch(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`yahoo HTTP ${res.status}`);
   const j = (await res.json()) as {
@@ -252,21 +282,24 @@ export async function getStock(query: string): Promise<DataResult> {
     throw new Error(j.chart?.error?.description ?? `no quote for "${symbol}"`);
   }
   const prev = meta.previousClose ?? meta.chartPreviousClose;
-  const change = prev !== undefined ? ((meta.regularMarketPrice - prev) / prev) * 100 : undefined;
+  const change =
+    prev !== undefined
+      ? ((meta.regularMarketPrice - prev) / prev) * 100
+      : undefined;
   const asOf = meta.regularMarketTime
     ? new Date(meta.regularMarketTime * 1000).toISOString()
-    : 'latest';
+    : "latest";
   return {
     text:
-      `${meta.symbol ?? symbol}: ${meta.regularMarketPrice} ${meta.currency ?? ''}` +
-      (prev !== undefined ? ` (previous close ${prev}` : '') +
+      `${meta.symbol ?? symbol}: ${meta.regularMarketPrice} ${meta.currency ?? ""}` +
+      (prev !== undefined ? ` (previous close ${prev}` : "") +
       (change !== undefined
-        ? `, ${change >= 0 ? '+' : ''}${change.toFixed(2)}%)`
+        ? `, ${change >= 0 ? "+" : ""}${change.toFixed(2)}%)`
         : prev !== undefined
-          ? ')'
-          : '') +
-      `\nExchange: ${meta.fullExchangeName ?? 'unknown'} · as of ${asOf}`,
-    source: 'Yahoo Finance',
+          ? ")"
+          : "") +
+      `\nExchange: ${meta.fullExchangeName ?? "unknown"} · as of ${asOf}`,
+    source: "Yahoo Finance",
   };
 }
 
@@ -276,11 +309,11 @@ export async function getStock(query: string): Promise<DataResult> {
  */
 export async function getMacro(query: string): Promise<DataResult> {
   const parts = query.trim().split(/\s+/);
-  const country = (parts[0] ?? 'WLD').toUpperCase();
-  const indicator = parts[1] ?? 'NY.GDP.MKTP.CD';
+  const country = (parts[0] ?? "WLD").toUpperCase();
+  const indicator = parts[1] ?? "NY.GDP.MKTP.CD";
   const res = await fetch(
     `https://api.worldbank.org/v2/country/${encodeURIComponent(country)}/indicator/${encodeURIComponent(indicator)}?format=json&per_page=5&mrv=5`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`worldbank HTTP ${res.status}`);
   const j = (await res.json()) as [
@@ -292,31 +325,38 @@ export async function getMacro(query: string): Promise<DataResult> {
       value?: number | null;
     }[]?,
   ];
-  const rows = (j[1] ?? []).filter((r) => r.value !== null && r.value !== undefined);
-  if (rows.length === 0) throw new Error(`no data for ${country} / ${indicator}`);
+  const rows = (j[1] ?? []).filter(
+    (r) => r.value !== null && r.value !== undefined,
+  );
+  if (rows.length === 0)
+    throw new Error(`no data for ${country} / ${indicator}`);
   const head = rows[0]!;
-  const series = rows.map((r) => `- ${r.date}: ${r.value}`).join('\n');
+  const series = rows.map((r) => `- ${r.date}: ${r.value}`).join("\n");
   return {
     text: `${head.indicator?.value ?? indicator} — ${head.country?.value ?? country}\n${series}`,
-    source: 'World Bank Open Data',
+    source: "World Bank Open Data",
   };
 }
 
-export type DataKind = 'weather' | 'sports' | 'fx' | 'crypto' | 'stock' | 'macro';
+export type DataKind =
+  "weather" | "sports" | "fx" | "crypto" | "stock" | "macro";
 
-export async function getData(kind: DataKind, query: string): Promise<DataResult> {
+export async function getData(
+  kind: DataKind,
+  query: string,
+): Promise<DataResult> {
   switch (kind) {
-    case 'weather':
+    case "weather":
       return getWeather(query);
-    case 'sports':
+    case "sports":
       return getSports(query);
-    case 'fx':
+    case "fx":
       return getFx(query);
-    case 'crypto':
+    case "crypto":
       return getCrypto(query);
-    case 'stock':
+    case "stock":
       return getStock(query);
-    case 'macro':
+    case "macro":
       return getMacro(query);
     default:
       throw new Error(`unknown kind "${String(kind)}"`);
@@ -335,33 +375,41 @@ export async function getPubmed(query: string): Promise<DataResult> {
   const ids = (await (
     await fetch(
       `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&retmax=5&term=${encodeURIComponent(query)}`,
-      { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+      { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
     )
   ).json()) as { esearchresult?: { idlist?: string[] } };
   const list = ids.esearchresult?.idlist ?? [];
   if (list.length === 0) throw new Error(`no PubMed results for "${query}"`);
   const sum = (await (
     await fetch(
-      `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=${list.join(',')}`,
-      { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+      `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=${list.join(",")}`,
+      { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
     )
-  ).json()) as { result?: Record<string, { title?: string; pubdate?: string; source?: string }> };
+  ).json()) as {
+    result?: Record<
+      string,
+      { title?: string; pubdate?: string; source?: string }
+    >;
+  };
   const rows = list
     .map((id) => {
       const r = sum.result?.[id];
       return r
-        ? `- ${r.title} (${r.source ?? '?'}, ${r.pubdate ?? '?'}) https://pubmed.ncbi.nlm.nih.gov/${id}/`
-        : '';
+        ? `- ${r.title} (${r.source ?? "?"}, ${r.pubdate ?? "?"}) https://pubmed.ncbi.nlm.nih.gov/${id}/`
+        : "";
     })
     .filter(Boolean);
-  return { text: `PubMed results for "${query}":\n${rows.join('\n')}`, source: 'PubMed' };
+  return {
+    text: `PubMed results for "${query}":\n${rows.join("\n")}`,
+    source: "PubMed",
+  };
 }
 
 /** openFDA drug labels — indications, warnings, dosage. */
 export async function getDrug(query: string): Promise<DataResult> {
   const res = await fetch(
     `https://api.fda.gov/drug/label.json?limit=1&search=openfda.generic_name:${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`openFDA HTTP ${res.status}`);
   const j = (await res.json()) as {
@@ -374,14 +422,15 @@ export async function getDrug(query: string): Promise<DataResult> {
   };
   const r = j.results?.[0];
   if (!r) throw new Error(`no FDA label for "${query}"`);
-  const clip = (a?: string[]) => (a?.[0] ?? '').replace(/\s+/g, ' ').slice(0, 700);
+  const clip = (a?: string[]) =>
+    (a?.[0] ?? "").replace(/\s+/g, " ").slice(0, 700);
   return {
     text:
-      `${(r.openfda?.brand_name ?? r.openfda?.generic_name ?? [query]).join(', ')}\n` +
-      `INDICATIONS: ${clip(r.indications_and_usage) || 'n/a'}\n` +
-      `DOSAGE: ${clip(r.dosage_and_administration) || 'n/a'}\n` +
-      `WARNINGS: ${clip(r.warnings) || 'n/a'}`,
-    source: 'openFDA (US drug labels)',
+      `${(r.openfda?.brand_name ?? r.openfda?.generic_name ?? [query]).join(", ")}\n` +
+      `INDICATIONS: ${clip(r.indications_and_usage) || "n/a"}\n` +
+      `DOSAGE: ${clip(r.dosage_and_administration) || "n/a"}\n` +
+      `WARNINGS: ${clip(r.warnings) || "n/a"}`,
+    source: "openFDA (US drug labels)",
   };
 }
 
@@ -389,7 +438,7 @@ export async function getDrug(query: string): Promise<DataResult> {
 export async function getTrials(query: string): Promise<DataResult> {
   const res = await fetch(
     `https://clinicaltrials.gov/api/v2/studies?pageSize=5&query.term=${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(15_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(15_000) },
   );
   if (!res.ok) throw new Error(`clinicaltrials HTTP ${res.status}`);
   const j = (await res.json()) as {
@@ -404,52 +453,72 @@ export async function getTrials(query: string): Promise<DataResult> {
   const rows = (j.studies ?? []).map((st) => {
     const p = st.protocolSection;
     const id = p?.identificationModule?.nctId;
-    return `- ${p?.identificationModule?.briefTitle ?? id} [${p?.statusModule?.overallStatus ?? '?'}${
-      p?.designModule?.phases?.length ? ', ' + p.designModule.phases.join('/') : ''
+    return `- ${p?.identificationModule?.briefTitle ?? id} [${p?.statusModule?.overallStatus ?? "?"}${
+      p?.designModule?.phases?.length
+        ? ", " + p.designModule.phases.join("/")
+        : ""
     }] https://clinicaltrials.gov/study/${id}`;
   });
   if (rows.length === 0) throw new Error(`no trials for "${query}"`);
   return {
-    text: `Clinical trials for "${query}":\n${rows.join('\n')}`,
-    source: 'ClinicalTrials.gov',
+    text: `Clinical trials for "${query}":\n${rows.join("\n")}`,
+    source: "ClinicalTrials.gov",
   };
 }
 
 /** USGS — recent earthquakes, magnitude filterable via the query. */
 export async function getQuakes(query: string): Promise<DataResult> {
-  const min = /(\d(?:\.\d)?)/.exec(query)?.[1] ?? '4.5';
+  const min = /(\d(?:\.\d)?)/.exec(query)?.[1] ?? "4.5";
   const res = await fetch(
     `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=8&orderby=time&minmagnitude=${min}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`usgs HTTP ${res.status}`);
   const j = (await res.json()) as {
-    features?: { properties?: { mag?: number; place?: string; time?: number; url?: string } }[];
+    features?: {
+      properties?: {
+        mag?: number;
+        place?: string;
+        time?: number;
+        url?: string;
+      };
+    }[];
   };
   const rows = (j.features ?? []).map((f) => {
     const p = f.properties ?? {};
-    return `- M${p.mag} ${p.place} — ${p.time ? new Date(p.time).toISOString() : '?'}`;
+    return `- M${p.mag} ${p.place} — ${p.time ? new Date(p.time).toISOString() : "?"}`;
   });
-  if (rows.length === 0) throw new Error('no events');
-  return { text: `Recent earthquakes (M${min}+):\n${rows.join('\n')}`, source: 'USGS' };
+  if (rows.length === 0) throw new Error("no events");
+  return {
+    text: `Recent earthquakes (M${min}+):\n${rows.join("\n")}`,
+    source: "USGS",
+  };
 }
 
 /** Open Library — books and authors. */
 export async function getBook(query: string): Promise<DataResult> {
   const res = await fetch(
     `https://openlibrary.org/search.json?limit=5&fields=title,author_name,first_publish_year,key&q=${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`openlibrary HTTP ${res.status}`);
   const j = (await res.json()) as {
-    docs?: { title?: string; author_name?: string[]; first_publish_year?: number; key?: string }[];
+    docs?: {
+      title?: string;
+      author_name?: string[];
+      first_publish_year?: number;
+      key?: string;
+    }[];
   };
   const rows = (j.docs ?? []).map(
     (d) =>
-      `- ${d.title} — ${(d.author_name ?? ['unknown']).join(', ')} (${d.first_publish_year ?? '?'}) https://openlibrary.org${d.key}`,
+      `- ${d.title} — ${(d.author_name ?? ["unknown"]).join(", ")} (${d.first_publish_year ?? "?"}) https://openlibrary.org${d.key}`,
   );
   if (rows.length === 0) throw new Error(`no books for "${query}"`);
-  return { text: `Books matching "${query}":\n${rows.join('\n')}`, source: 'Open Library' };
+  return {
+    text: `Books matching "${query}":\n${rows.join("\n")}`,
+    source: "Open Library",
+  };
 }
 
 /**
@@ -462,10 +531,13 @@ export async function getBook(query: string): Promise<DataResult> {
  * registration, so it will not quietly turn into a signup wall.
  */
 export async function getCountry(query: string): Promise<DataResult> {
-  const listRes = await fetch('https://api.worldbank.org/v2/country?format=json&per_page=400', {
-    headers: { 'user-agent': UA },
-    signal: AbortSignal.timeout(15_000),
-  });
+  const listRes = await fetch(
+    "https://api.worldbank.org/v2/country?format=json&per_page=400",
+    {
+      headers: { "user-agent": UA },
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
   if (!listRes.ok) throw new Error(`worldbank HTTP ${listRes.status}`);
   const list = (await listRes.json()) as [
     unknown,
@@ -482,43 +554,52 @@ export async function getCountry(query: string): Promise<DataResult> {
   const rows = list[1] ?? [];
   const c =
     rows.find((r) => r.name?.toLowerCase() === q) ??
-    rows.find((r) => r.iso2Code?.toLowerCase() === q || r.id?.toLowerCase() === q) ??
+    rows.find(
+      (r) => r.iso2Code?.toLowerCase() === q || r.id?.toLowerCase() === q,
+    ) ??
     rows.find((r) => r.name?.toLowerCase().includes(q));
   // Aggregates (regions, income groups) have no capital — exclude them so
   // "Europe" does not come back as if it were a country.
   if (!c || !c.capitalCity) throw new Error(`no country matching "${query}"`);
 
-  let population = '';
+  let population = "";
   try {
     const p = await fetch(
       `https://api.worldbank.org/v2/country/${c.id}/indicator/SP.POP.TOTL?format=json&per_page=1&mrv=1`,
-      { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+      { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
     );
-    const pj = (await p.json()) as [unknown, { date?: string; value?: number | null }[]?];
+    const pj = (await p.json()) as [
+      unknown,
+      { date?: string; value?: number | null }[]?,
+    ];
     const row = (pj[1] ?? [])[0];
-    if (row?.value) population = `\n- population: ${row.value.toLocaleString()} (${row.date})`;
+    if (row?.value)
+      population = `\n- population: ${row.value.toLocaleString()} (${row.date})`;
   } catch {
     /* population is a bonus, not a reason to fail the lookup */
   }
 
   return {
     text:
-      `${c.name} (${c.id})\n- capital: ${c.capitalCity}\n- region: ${c.region?.value ?? '?'}\n` +
-      `- income group: ${c.incomeLevel?.value ?? '?'}${population}`,
-    source: 'World Bank',
+      `${c.name} (${c.id})\n- capital: ${c.capitalCity}\n- region: ${c.region?.value ?? "?"}\n` +
+      `- income group: ${c.incomeLevel?.value ?? "?"}${population}`,
+    source: "World Bank",
   };
 }
 
 /** npm or PyPI package metadata — version, license, description, homepage. */
 export async function getPackage(query: string): Promise<DataResult> {
   const [eco, ...rest] = query.trim().split(/\s+/);
-  const isPy = /^(py|pypi|python)$/i.test(eco ?? '');
-  const name = (isPy ? rest.join(' ') : query).trim();
+  const isPy = /^(py|pypi|python)$/i.test(eco ?? "");
+  const name = (isPy ? rest.join(" ") : query).trim();
   if (isPy) {
-    const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`, {
-      headers: { 'user-agent': UA },
-      signal: AbortSignal.timeout(12_000),
-    });
+    const res = await fetch(
+      `https://pypi.org/pypi/${encodeURIComponent(name)}/json`,
+      {
+        headers: { "user-agent": UA },
+        signal: AbortSignal.timeout(12_000),
+      },
+    );
     if (!res.ok) throw new Error(`pypi HTTP ${res.status}`);
     const j = (await res.json()) as {
       info?: {
@@ -531,15 +612,18 @@ export async function getPackage(query: string): Promise<DataResult> {
     };
     const i = j.info ?? {};
     return {
-      text: `${name} (PyPI) v${i.version}\n${i.summary ?? ''}\nlicense: ${i.license || 'n/a'}\n${i.project_url ?? i.home_page ?? ''}`,
-      source: 'PyPI',
+      text: `${name} (PyPI) v${i.version}\n${i.summary ?? ""}\nlicense: ${i.license || "n/a"}\n${i.project_url ?? i.home_page ?? ""}`,
+      source: "PyPI",
     };
   }
   // The full npm document can exceed 6MB; /latest is the small view.
-  const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/latest`, {
-    headers: { 'user-agent': UA },
-    signal: AbortSignal.timeout(12_000),
-  });
+  const res = await fetch(
+    `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`,
+    {
+      headers: { "user-agent": UA },
+      signal: AbortSignal.timeout(12_000),
+    },
+  );
   if (!res.ok) throw new Error(`npm HTTP ${res.status}`);
   const j = (await res.json()) as {
     version?: string;
@@ -548,8 +632,8 @@ export async function getPackage(query: string): Promise<DataResult> {
     homepage?: string;
   };
   return {
-    text: `${name} (npm) v${j.version}\n${j.description ?? ''}\nlicense: ${j.license ?? 'n/a'}\n${j.homepage ?? ''}`,
-    source: 'npm registry',
+    text: `${name} (npm) v${j.version}\n${j.description ?? ""}\nlicense: ${j.license ?? "n/a"}\n${j.homepage ?? ""}`,
+    source: "npm registry",
   };
 }
 
@@ -557,7 +641,7 @@ export async function getPackage(query: string): Promise<DataResult> {
 export async function getCve(query: string): Promise<DataResult> {
   const res = await fetch(
     `https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=5&keywordSearch=${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(15_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(15_000) },
   );
   if (!res.ok) throw new Error(`nvd HTTP ${res.status}`);
   const j = (await res.json()) as {
@@ -567,7 +651,9 @@ export async function getCve(query: string): Promise<DataResult> {
         published?: string;
         descriptions?: { lang?: string; value?: string }[];
         metrics?: {
-          cvssMetricV31?: { cvssData?: { baseScore?: number; baseSeverity?: string } }[];
+          cvssMetricV31?: {
+            cvssData?: { baseScore?: number; baseSeverity?: string };
+          }[];
         };
       };
     }[];
@@ -575,18 +661,22 @@ export async function getCve(query: string): Promise<DataResult> {
   const rows = (j.vulnerabilities ?? []).map((v) => {
     const c = v.cve ?? {};
     const m = c.metrics?.cvssMetricV31?.[0]?.cvssData;
-    const desc = (c.descriptions ?? []).find((d) => d.lang === 'en')?.value ?? '';
-    return `- ${c.id} [${m?.baseSeverity ?? '?'} ${m?.baseScore ?? ''}] ${desc.slice(0, 180)}`;
+    const desc =
+      (c.descriptions ?? []).find((d) => d.lang === "en")?.value ?? "";
+    return `- ${c.id} [${m?.baseSeverity ?? "?"} ${m?.baseScore ?? ""}] ${desc.slice(0, 180)}`;
   });
   if (rows.length === 0) throw new Error(`no CVEs for "${query}"`);
-  return { text: `CVEs matching "${query}":\n${rows.join('\n')}`, source: 'NVD (NIST)' };
+  return {
+    text: `CVEs matching "${query}":\n${rows.join("\n")}`,
+    source: "NVD (NIST)",
+  };
 }
 
 /** Open Food Facts — product nutrition. */
 export async function getFood(query: string): Promise<DataResult> {
   const res = await fetch(
     `https://world.openfoodfacts.org/api/v2/search?page_size=3&fields=product_name,brands,nutriscore_grade,nutriments&search_terms=${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(15_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(15_000) },
   );
   if (!res.ok) throw new Error(`openfoodfacts HTTP ${res.status}`);
   const j = (await res.json()) as {
@@ -602,14 +692,14 @@ export async function getFood(query: string): Promise<DataResult> {
     .map((p) => {
       const n = p.nutriments ?? {};
       return (
-        `- ${p.product_name}${p.brands ? ` (${p.brands})` : ''} — nutri-score ${(p.nutriscore_grade ?? '?').toUpperCase()}, ` +
-        `${n['energy-kcal_100g'] ?? '?'} kcal/100g, sugar ${n.sugars_100g ?? '?'}g, fat ${n.fat_100g ?? '?'}g`
+        `- ${p.product_name}${p.brands ? ` (${p.brands})` : ""} — nutri-score ${(p.nutriscore_grade ?? "?").toUpperCase()}, ` +
+        `${n["energy-kcal_100g"] ?? "?"} kcal/100g, sugar ${n.sugars_100g ?? "?"}g, fat ${n.fat_100g ?? "?"}g`
       );
     });
   if (rows.length === 0) throw new Error(`no products for "${query}"`);
   return {
-    text: `Food products matching "${query}":\n${rows.join('\n')}`,
-    source: 'Open Food Facts',
+    text: `Food products matching "${query}":\n${rows.join("\n")}`,
+    source: "Open Food Facts",
   };
 }
 
@@ -617,24 +707,28 @@ export async function getFood(query: string): Promise<DataResult> {
 export async function getEntity(query: string): Promise<DataResult> {
   const res = await fetch(
     `https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&origin=*&search=${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`wikidata HTTP ${res.status}`);
   const j = (await res.json()) as {
     search?: { id?: string; label?: string; description?: string }[];
   };
   const rows = (j.search ?? []).map(
-    (e) => `- ${e.label} (${e.id}): ${e.description ?? ''} https://www.wikidata.org/wiki/${e.id}`,
+    (e) =>
+      `- ${e.label} (${e.id}): ${e.description ?? ""} https://www.wikidata.org/wiki/${e.id}`,
   );
   if (rows.length === 0) throw new Error(`no entity "${query}"`);
-  return { text: `Wikidata entities for "${query}":\n${rows.join('\n')}`, source: 'Wikidata' };
+  return {
+    text: `Wikidata entities for "${query}":\n${rows.join("\n")}`,
+    source: "Wikidata",
+  };
 }
 
 /** MusicBrainz — artists and releases. */
 export async function getMusic(query: string): Promise<DataResult> {
   const res = await fetch(
     `https://musicbrainz.org/ws/2/artist?fmt=json&limit=5&query=${encodeURIComponent(query)}`,
-    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(12_000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`musicbrainz HTTP ${res.status}`);
   const j = (await res.json()) as {
@@ -642,54 +736,60 @@ export async function getMusic(query: string): Promise<DataResult> {
       name?: string;
       country?: string;
       disambiguation?: string;
-      'life-span'?: { begin?: string; end?: string };
+      "life-span"?: { begin?: string; end?: string };
       id?: string;
     }[];
   };
   const rows = (j.artists ?? []).map(
     (a) =>
-      `- ${a.name}${a.country ? ` (${a.country})` : ''} ${a['life-span']?.begin ?? ''}${a['life-span']?.end ? `–${a['life-span'].end}` : ''} ${a.disambiguation ?? ''}`,
+      `- ${a.name}${a.country ? ` (${a.country})` : ""} ${a["life-span"]?.begin ?? ""}${a["life-span"]?.end ? `–${a["life-span"].end}` : ""} ${a.disambiguation ?? ""}`,
   );
   if (rows.length === 0) throw new Error(`no artist "${query}"`);
-  return { text: `MusicBrainz artists for "${query}":\n${rows.join('\n')}`, source: 'MusicBrainz' };
+  return {
+    text: `MusicBrainz artists for "${query}":\n${rows.join("\n")}`,
+    source: "MusicBrainz",
+  };
 }
 
 export type ReferenceKind =
-  | 'pubmed'
-  | 'drug'
-  | 'trials'
-  | 'quakes'
-  | 'book'
-  | 'country'
-  | 'package'
-  | 'cve'
-  | 'food'
-  | 'entity'
-  | 'music';
+  | "pubmed"
+  | "drug"
+  | "trials"
+  | "quakes"
+  | "book"
+  | "country"
+  | "package"
+  | "cve"
+  | "food"
+  | "entity"
+  | "music";
 
-export async function getReference(kind: ReferenceKind, query: string): Promise<DataResult> {
+export async function getReference(
+  kind: ReferenceKind,
+  query: string,
+): Promise<DataResult> {
   switch (kind) {
-    case 'pubmed':
+    case "pubmed":
       return getPubmed(query);
-    case 'drug':
+    case "drug":
       return getDrug(query);
-    case 'trials':
+    case "trials":
       return getTrials(query);
-    case 'quakes':
+    case "quakes":
       return getQuakes(query);
-    case 'book':
+    case "book":
       return getBook(query);
-    case 'country':
+    case "country":
       return getCountry(query);
-    case 'package':
+    case "package":
       return getPackage(query);
-    case 'cve':
+    case "cve":
       return getCve(query);
-    case 'food':
+    case "food":
       return getFood(query);
-    case 'entity':
+    case "entity":
       return getEntity(query);
-    case 'music':
+    case "music":
       return getMusic(query);
     default:
       throw new Error(`unknown reference kind "${String(kind)}"`);

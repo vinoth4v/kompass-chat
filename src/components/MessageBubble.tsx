@@ -1,11 +1,19 @@
-'use client';
-import { Check, Copy, Download, Paperclip, Pencil, RefreshCw, Trash2 } from 'lucide-react';
-import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import rehypeHighlight from 'rehype-highlight';
-import remarkGfm from 'remark-gfm';
-import type { ChatMessage } from '@/lib/types';
-import { CodeBlock } from './CodeBlock';
+"use client";
+import {
+  Check,
+  Copy,
+  Download,
+  Paperclip,
+  Pencil,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import remarkGfm from "remark-gfm";
+import type { ChatMessage } from "@/lib/types";
+import { CodeBlock } from "./CodeBlock";
 
 const markdownComponents = {
   pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -56,7 +64,7 @@ export function MessageBubble({
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.text);
-  const isUser = message.role === 'user';
+  const isUser = message.role === "user";
 
   const copy = () => {
     navigator.clipboard.writeText(message.text).catch(() => {});
@@ -66,7 +74,7 @@ export function MessageBubble({
 
   return (
     <div
-      className={`kompass-fade-in group flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}
+      className={`kompass-fade-in group flex w-full min-w-0 ${isUser ? "justify-end" : "justify-start"}`}
     >
       <div
         className={
@@ -75,13 +83,13 @@ export function MessageBubble({
           // "amateur chat app" signal; every serious assistant UI lets the
           // answer occupy the reading column and distinguishes speakers by
           // spacing and weight instead.
-          `flex min-w-0 flex-col gap-2 ${isUser ? 'max-w-[85%] items-end sm:max-w-[78%]' : 'w-full items-start'}`
+          `flex min-w-0 flex-col gap-2 ${isUser ? "max-w-[85%] items-end sm:max-w-[78%]" : "w-full items-start"}`
         }
       >
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {message.images.map((img, i) =>
-              img.kind !== 'image' ? (
+              img.kind !== "image" ? (
                 <span
                   key={i}
                   className="flex max-w-[240px] items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[0.78rem] text-ink-secondary"
@@ -108,7 +116,7 @@ export function MessageBubble({
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              rows={Math.min(10, draft.split('\n').length + 1)}
+              rows={Math.min(10, draft.split("\n").length + 1)}
               className="w-full resize-none bg-transparent text-[0.95em] text-inherit outline-none placeholder:text-ink-faint"
               autoFocus
             />
@@ -140,15 +148,17 @@ export function MessageBubble({
               // instead of wrapping. min-w-0 alone (the usual flex-overflow fix)
               // does not touch this; only max-width does.
               (isUser
-                ? 'rounded-[1.25rem] rounded-br-md bg-surface-strong px-4 py-2.5 text-ink'
+                ? "rounded-[1.25rem] rounded-br-md bg-surface-strong px-4 py-2.5 text-ink"
                 : message.error
-                  ? 'w-full rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-danger'
-                  : 'w-full') + ' max-w-full'
+                  ? "w-full rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-danger"
+                  : "w-full") + " max-w-full"
             }
           >
             {message.generatedImage ? (
               <div className="flex flex-col gap-2">
-                {message.text && <p className="text-sm text-ink-secondary">{message.text}</p>}
+                {message.text && (
+                  <p className="text-sm text-ink-secondary">{message.text}</p>
+                )}
                 <div className="group/img relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -167,7 +177,9 @@ export function MessageBubble({
                 </div>
               </div>
             ) : isUser ? (
-              <p className="whitespace-pre-wrap break-words text-[0.95em]">{message.text}</p>
+              <p className="whitespace-pre-wrap break-words text-[0.95em]">
+                {message.text}
+              </p>
             ) : (
               <div className="prose-kompass max-w-none break-words text-[0.95em]">
                 <ReactMarkdown
@@ -175,7 +187,7 @@ export function MessageBubble({
                   rehypePlugins={[rehypeHighlight]}
                   components={markdownComponents}
                 >
-                  {message.text || ' '}
+                  {message.text || " "}
                 </ReactMarkdown>
               </div>
             )}
@@ -211,7 +223,10 @@ export function MessageBubble({
             </IconButton>
           )}
           {isUser && onEdit && !editing && (
-            <IconButton onClick={() => setEditing(true)} title="Edit &amp; resend">
+            <IconButton
+              onClick={() => setEditing(true)}
+              title="Edit &amp; resend"
+            >
               <Pencil size={14} />
             </IconButton>
           )}
@@ -230,10 +245,13 @@ export function MessageBubble({
                   {message.lane}
                 </span>
               )}
-              {message.servedBy && <span className="font-mono">{message.servedBy}</span>}
+              {message.servedBy && (
+                <span className="font-mono">{message.servedBy}</span>
+              )}
               {message.usage && (
                 <span>
-                  {fmtTokens(message.usage.input)}→{fmtTokens(message.usage.output)} tok
+                  {fmtTokens(message.usage.input)}→
+                  {fmtTokens(message.usage.output)} tok
                 </span>
               )}
             </span>

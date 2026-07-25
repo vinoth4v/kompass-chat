@@ -10,9 +10,9 @@ import {
   type AnthropicTextBlockWire,
   type AnthropicToolResultBlockWire,
   type AnthropicToolUseBlockWire,
-} from './kompassClient';
-import type { KompassSettings } from './types';
-import { TOOLS, executeTool } from './tools';
+} from "./kompassClient";
+import type { KompassSettings } from "./types";
+import { TOOLS, executeTool } from "./tools";
 
 /**
  * Asked for in the same call rather than a second request: an extra round trip
@@ -21,34 +21,39 @@ import { TOOLS, executeTool } from './tools';
  * the format simply yields no chips, which is a fine failure mode.
  */
 const FOLLOWUP_INSTRUCTION =
-  'After your answer, add a final line in exactly this form, with two or three short ' +
+  "After your answer, add a final line in exactly this form, with two or three short " +
   'questions the user would plausibly want to ask next, separated by " | ":\n' +
-  'FOLLOWUPS: question one | question two | question three\n' +
-  'Make them specific to what you just said, not generic. Omit the line entirely if no ' +
-  'follow-up would genuinely help.';
+  "FOLLOWUPS: question one | question two | question three\n" +
+  "Make them specific to what you just said, not generic. Omit the line entirely if no " +
+  "follow-up would genuinely help.";
 
 /** Pull the FOLLOWUPS line out of a reply and return the cleaned text. */
-export function extractFollowups(text: string): { text: string; followups?: string[] } {
+export function extractFollowups(text: string): {
+  text: string;
+  followups?: string[];
+} {
   const m = /^[ \t]*FOLLOWUPS:[ \t]*(.+)$/im.exec(text);
   if (!m) return { text };
-  const followups = (m[1] ?? '')
-    .split('|')
-    .map((q) => q.trim().replace(/^[-*\d.\s]+/, ''))
+  const followups = (m[1] ?? "")
+    .split("|")
+    .map((q) => q.trim().replace(/^[-*\d.\s]+/, ""))
     .filter((q) => q.length > 3 && q.length < 160)
     .slice(0, 3);
-  const cleaned = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trimEnd();
+  const cleaned = (
+    text.slice(0, m.index) + text.slice(m.index + m[0].length)
+  ).trimEnd();
   return { text: cleaned, followups: followups.length ? followups : undefined };
 }
 
 const RESEARCH_SYSTEM_PROMPT =
-  'You are a careful research assistant. For exact current facts (weather, FX rates, stock and ' +
-  'crypto prices, live scores, World Bank indicators) call get_data; for recent events call ' +
-  'get_news — both return authoritative values rather than pages to interpret. ' +
-  'Otherwise use the web_search tool to find relevant, ' +
-  'current sources, then web_fetch 2-4 of the most promising results to read their ' +
-  'full content before answering. Synthesize a clear, well-organized answer in ' +
-  'markdown. Be explicit about uncertainty if sources are thin or conflicting — ' +
-  'never fabricate facts or sources.\n\n' +
+  "You are a careful research assistant. For exact current facts (weather, FX rates, stock and " +
+  "crypto prices, live scores, World Bank indicators) call get_data; for recent events call " +
+  "get_news — both return authoritative values rather than pages to interpret. " +
+  "Otherwise use the web_search tool to find relevant, " +
+  "current sources, then web_fetch 2-4 of the most promising results to read their " +
+  "full content before answering. Synthesize a clear, well-organized answer in " +
+  "markdown. Be explicit about uncertainty if sources are thin or conflicting — " +
+  "never fabricate facts or sources.\n\n" +
   FOLLOWUP_INSTRUCTION;
 
 const MAX_ITERATIONS = 6;
@@ -78,7 +83,7 @@ export async function runResearch(
   question: string,
   signal?: AbortSignal,
 ): Promise<ResearchResult> {
-  const history: AnthropicMessageWire[] = [{ role: 'user', content: question }];
+  const history: AnthropicMessageWire[] = [{ role: "user", content: question }];
   const sources: { title: string; url: string }[] = [];
   const seenUrls = new Set<string>();
   let totalIn = 0;
@@ -108,15 +113,15 @@ export async function runResearch(
     totalOut += response.usage.output_tokens;
 
     const toolUses = response.content.filter(
-      (b): b is AnthropicToolUseBlockWire => b.type === 'tool_use',
+      (b): b is AnthropicToolUseBlockWire => b.type === "tool_use",
     );
     if (toolUses.length === 0) {
       const text = response.content
-        .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
+        .filter((b): b is AnthropicTextBlockWire => b.type === "text")
         .map((b) => b.text)
-        .join('\n\n');
+        .join("\n\n");
       return {
-        text: text || '(no answer)',
+        text: text || "(no answer)",
         sources,
         usage: { input: totalIn, output: totalOut },
         servedBy,
@@ -124,16 +129,16 @@ export async function runResearch(
       };
     }
 
-    history.push({ role: 'assistant', content: response.content });
+    history.push({ role: "assistant", content: response.content });
     const toolResults: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
       toolResults.push(await executeTool(call, sources, seenUrls, {}, signal));
     }
-    history.push({ role: 'user', content: toolResults });
+    history.push({ role: "user", content: toolResults });
   }
 
   return {
-    text: 'Research took too many steps — here is what was gathered before stopping.',
+    text: "Research took too many steps — here is what was gathered before stopping.",
     sources,
     usage: { input: totalIn, output: totalOut },
     servedBy,
@@ -142,20 +147,20 @@ export async function runResearch(
 }
 
 const CHAT_SYSTEM_PROMPT =
-  'You are Kompass AI, a helpful assistant with access to web search.\n\n' +
-  'For exact current facts — weather, currency rates, stock or crypto prices, live scores, ' +
-  'macro indicators — call get_data, and for anything recent call get_news. Those return the ' +
-  'fact itself rather than a page to interpret, so they are both faster and harder to get ' +
-  'wrong than searching.\n\n' +
-  'Use web_search (and then web_fetch on the most promising results) whenever the answer ' +
-  'depends on facts you cannot be confident about from memory: current events, releases, ' +
+  "You are Kompass AI, a helpful assistant with access to web search.\n\n" +
+  "For exact current facts — weather, currency rates, stock or crypto prices, live scores, " +
+  "macro indicators — call get_data, and for anything recent call get_news. Those return the " +
+  "fact itself rather than a page to interpret, so they are both faster and harder to get " +
+  "wrong than searching.\n\n" +
+  "Use web_search (and then web_fetch on the most promising results) whenever the answer " +
+  "depends on facts you cannot be confident about from memory: current events, releases, " +
   'versions, prices, people, "latest"/"best" questions, anything dated, or anything where being ' +
-  'out of date would mislead. When you do, cite what you read.\n\n' +
-  'Do NOT search for things you already know or that do not depend on current facts — writing ' +
-  'code, explaining a concept, editing text, reasoning about something the user gave you. ' +
+  "out of date would mislead. When you do, cite what you read.\n\n" +
+  "Do NOT search for things you already know or that do not depend on current facts — writing " +
+  "code, explaining a concept, editing text, reasoning about something the user gave you. " +
   "Searching those wastes the user's time.\n\n" +
-  'If a search returns nothing useful, say so rather than filling the gap from memory and ' +
-  'presenting it as current.\n\n' +
+  "If a search returns nothing useful, say so rather than filling the gap from memory and " +
+  "presenting it as current.\n\n" +
   FOLLOWUP_INSTRUCTION;
 
 const CHAT_MAX_ITERATIONS = 4;
@@ -205,16 +210,16 @@ export async function runChatWithTools(
     totalOut += response.usage.output_tokens;
 
     const toolUses = response.content.filter(
-      (b): b is AnthropicToolUseBlockWire => b.type === 'tool_use',
+      (b): b is AnthropicToolUseBlockWire => b.type === "tool_use",
     );
     if (toolUses.length === 0) {
       const raw = response.content
-        .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
+        .filter((b): b is AnthropicTextBlockWire => b.type === "text")
         .map((b) => b.text)
-        .join('\n\n');
+        .join("\n\n");
       const { text, followups } = extractFollowups(raw);
       return {
-        text: text || '(empty response)',
+        text: text || "(empty response)",
         followups,
         sources,
         usage: { input: totalIn, output: totalOut },
@@ -223,16 +228,16 @@ export async function runChatWithTools(
       };
     }
 
-    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: "assistant", content: response.content });
     const toolResults: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
       toolResults.push(await executeTool(call, sources, seenUrls, {}, signal));
     }
-    messages.push({ role: 'user', content: toolResults });
+    messages.push({ role: "user", content: toolResults });
   }
 
   return {
-    text: '(no answer)',
+    text: "(no answer)",
     sources,
     usage: { input: totalIn, output: totalOut },
     servedBy,

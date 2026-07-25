@@ -10,7 +10,13 @@
  * The needle is the only saturated element. That is deliberate: one accent per
  * mark is what keeps it legible at 16px in a browser tab.
  */
-export function LogoMark({ size = 24, className = '' }: { size?: number; className?: string }) {
+export function LogoMark({
+  size = 24,
+  className = "",
+}: {
+  size?: number;
+  className?: string;
+}) {
   return (
     <svg
       width={size}
@@ -20,9 +26,21 @@ export function LogoMark({ size = 24, className = '' }: { size?: number; classNa
       className={className}
       aria-hidden="true"
     >
-      <circle cx="16" cy="16" r="13.25" stroke="currentColor" strokeWidth="1.5" opacity="0.32" />
+      <circle
+        cx="16"
+        cy="16"
+        r="13.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        opacity="0.32"
+      />
       {/* Cardinal ticks — subtle, they read as texture rather than detail. */}
-      <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.32">
+      <g
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        opacity="0.32"
+      >
         <path d="M16 3.4v2.4" />
         <path d="M16 26.2v2.4" />
         <path d="M3.4 16h2.4" />
@@ -34,12 +52,19 @@ export function LogoMark({ size = 24, className = '' }: { size?: number; classNa
       <path d="M16 7.2 11.9 17 16 15.1Z" fill="var(--accent)" opacity="0.62" />
       <path d="M16 24.8 11.9 17 16 18.9Z" fill="currentColor" opacity="0.55" />
       <path d="M16 24.8 20.1 17 16 18.9Z" fill="currentColor" opacity="0.3" />
-      <circle cx="16" cy="16.9" r="1.5" fill="var(--bg)" stroke="currentColor" strokeWidth="1.2" />
+      <circle
+        cx="16"
+        cy="16.9"
+        r="1.5"
+        fill="var(--bg)"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
     </svg>
   );
 }
 
-export function Wordmark({ className = '' }: { className?: string }) {
+export function Wordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`flex items-center gap-2 ${className}`}>
       <LogoMark size={22} className="text-ink" />

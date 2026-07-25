@@ -16,7 +16,7 @@ import type {
   AnthropicToolResultBlockWire,
   AnthropicToolUseBlockWire,
   AnthropicToolWire,
-} from './kompassClient';
+} from "./kompassClient";
 
 export interface Source {
   title: string;
@@ -25,100 +25,105 @@ export interface Source {
 
 export const TOOLS: AnthropicToolWire[] = [
   {
-    name: 'web_search',
+    name: "web_search",
     description:
-      'Search the web. Returns a list of results with title, url and snippet. Use for general ' +
-      'questions, background, and finding pages worth reading.',
+      "Search the web. Returns a list of results with title, url and snippet. Use for general " +
+      "questions, background, and finding pages worth reading.",
     input_schema: {
-      type: 'object',
-      properties: { query: { type: 'string', description: 'Search query' } },
-      required: ['query'],
+      type: "object",
+      properties: { query: { type: "string", description: "Search query" } },
+      required: ["query"],
     },
   },
   {
-    name: 'web_fetch',
+    name: "web_fetch",
     description:
-      'Fetch a URL and return its main page text. Use this to actually READ a promising search ' +
-      'result — a snippet alone is not enough to answer on.',
+      "Fetch a URL and return its main page text. Use this to actually READ a promising search " +
+      "result — a snippet alone is not enough to answer on.",
     input_schema: {
-      type: 'object',
-      properties: { url: { type: 'string', description: 'Absolute URL to fetch' } },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'get_news',
-    description:
-      'Current news headlines with publication dates and outlets (Google News). Use for anything ' +
-      'recent, breaking, or where being out of date would mislead — this is far more reliable ' +
-      'than recalling events from memory.',
-    input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        query: { type: 'string', description: 'News topic, person, company or event' },
+        url: { type: "string", description: "Absolute URL to fetch" },
       },
-      required: ['query'],
+      required: ["url"],
     },
   },
   {
-    name: 'get_data',
+    name: "get_news",
     description:
-      'Look up an exact, current fact from an authoritative source. Prefer this over web_search ' +
-      'whenever it applies — it returns the number itself rather than a page to interpret. ' +
-      'kind=weather (forecast for a place), sports (live scores/fixtures for a league such as ' +
+      "Current news headlines with publication dates and outlets (Google News). Use for anything " +
+      "recent, breaking, or where being out of date would mislead — this is far more reliable " +
+      "than recalling events from memory.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "News topic, person, company or event",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_data",
+    description:
+      "Look up an exact, current fact from an authoritative source. Prefer this over web_search " +
+      "whenever it applies — it returns the number itself rather than a page to interpret. " +
+      "kind=weather (forecast for a place), sports (live scores/fixtures for a league such as " +
       'NBA/NFL/premier/bundesliga, or a team profile), fx (currency rate, e.g. "EUR to USD"), ' +
       'crypto (coin price by CoinGecko id, e.g. "bitcoin"), stock (quote by ticker, e.g. "AAPL"), ' +
       'macro (World Bank indicator, e.g. "DE NY.GDP.MKTP.CD").',
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
         kind: {
-          type: 'string',
-          enum: ['weather', 'sports', 'fx', 'crypto', 'stock', 'macro'],
-          description: 'Which structured source to query',
+          type: "string",
+          enum: ["weather", "sports", "fx", "crypto", "stock", "macro"],
+          description: "Which structured source to query",
         },
         query: {
-          type: 'string',
-          description: 'Place, league, team, currency pair, coin or ticker',
+          type: "string",
+          description: "Place, league, team, currency pair, coin or ticker",
         },
       },
-      required: ['kind', 'query'],
+      required: ["kind", "query"],
     },
   },
   {
-    name: 'get_reference',
+    name: "get_reference",
     description:
-      'Look something up in an authoritative register. Use instead of web_search when the ' +
-      'question is about a known entity, record or publication. ' +
-      'kind=pubmed (biomedical papers), drug (US FDA drug label: indications, dosage, warnings), ' +
-      'trials (ClinicalTrials.gov studies), quakes (recent earthquakes, query = minimum ' +
-      'magnitude), book (Open Library), country (population/capital/currency/languages), ' +
+      "Look something up in an authoritative register. Use instead of web_search when the " +
+      "question is about a known entity, record or publication. " +
+      "kind=pubmed (biomedical papers), drug (US FDA drug label: indications, dosage, warnings), " +
+      "trials (ClinicalTrials.gov studies), quakes (recent earthquakes, query = minimum " +
+      "magnitude), book (Open Library), country (population/capital/currency/languages), " +
       'package (npm by name, or "py <name>" for PyPI: version, license, description), ' +
-      'cve (published security vulnerabilities by keyword), food (product nutrition), ' +
-      'entity (Wikidata facts about a person/place/thing), music (MusicBrainz artists).',
+      "cve (published security vulnerabilities by keyword), food (product nutrition), " +
+      "entity (Wikidata facts about a person/place/thing), music (MusicBrainz artists).",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
         kind: {
-          type: 'string',
+          type: "string",
           enum: [
-            'pubmed',
-            'drug',
-            'trials',
-            'quakes',
-            'book',
-            'country',
-            'package',
-            'cve',
-            'food',
-            'entity',
-            'music',
+            "pubmed",
+            "drug",
+            "trials",
+            "quakes",
+            "book",
+            "country",
+            "package",
+            "cve",
+            "food",
+            "entity",
+            "music",
           ],
-          description: 'Which register to query',
+          description: "Which register to query",
         },
-        query: { type: 'string', description: 'Search term for that register' },
+        query: { type: "string", description: "Search term for that register" },
       },
-      required: ['kind', 'query'],
+      required: ["kind", "query"],
     },
   },
 ];
@@ -147,8 +152,11 @@ interface DataResultJson {
   error?: string;
 }
 
-const err = (call: AnthropicToolUseBlockWire, msg: string): AnthropicToolResultBlockWire => ({
-  type: 'tool_result',
+const err = (
+  call: AnthropicToolUseBlockWire,
+  msg: string,
+): AnthropicToolResultBlockWire => ({
+  type: "tool_result",
   tool_use_id: call.id,
   content: msg,
   is_error: true,
@@ -162,53 +170,67 @@ export async function executeTool(
   signal?: AbortSignal,
 ): Promise<AnthropicToolResultBlockWire> {
   try {
-    if (call.name === 'web_search') {
-      const query = String(call.input.query ?? '');
+    if (call.name === "web_search") {
+      const query = String(call.input.query ?? "");
       hooks.onSearch?.(query);
-      const res = await fetch('/api/tools/web_search', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+      const res = await fetch("/api/tools/web_search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ query }),
         signal,
       });
       const json = (await res.json()) as SearchResultJson;
-      if (!res.ok || !json.results) return err(call, `search failed: ${json.error ?? res.status}`);
+      if (!res.ok || !json.results)
+        return err(call, `search failed: ${json.error ?? res.status}`);
       const summary = json.results
         .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
-        .join('\n\n');
+        .join("\n\n");
       return {
-        type: 'tool_result',
+        type: "tool_result",
         tool_use_id: call.id,
-        content: summary || 'no results',
+        content: summary || "no results",
       };
     }
 
-    if (call.name === 'web_fetch') {
-      const url = String(call.input.url ?? '');
+    if (call.name === "web_fetch") {
+      const url = String(call.input.url ?? "");
       hooks.onFetch?.(url);
-      const res = await fetch('/api/tools/web_fetch', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+      const res = await fetch("/api/tools/web_fetch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ url }),
         signal,
       });
       const json = (await res.json()) as FetchResultJson;
-      if (!res.ok) return err(call, `fetch failed: ${json.error ?? res.status}`);
+      if (!res.ok)
+        return err(call, `fetch failed: ${json.error ?? res.status}`);
       if (!seenUrls.has(url)) {
         seenUrls.add(url);
-        sources.push({ title: url.replace(/^https?:\/\//, '').slice(0, 80), url });
+        sources.push({
+          title: url.replace(/^https?:\/\//, "").slice(0, 80),
+          url,
+        });
         hooks.onRead?.();
       }
-      return { type: 'tool_result', tool_use_id: call.id, content: json.text ?? '' };
+      return {
+        type: "tool_result",
+        tool_use_id: call.id,
+        content: json.text ?? "",
+      };
     }
 
-    if (call.name === 'get_news' || call.name === 'get_data' || call.name === 'get_reference') {
-      const kind = call.name === 'get_news' ? 'news' : String(call.input.kind ?? '');
-      const query = String(call.input.query ?? '');
+    if (
+      call.name === "get_news" ||
+      call.name === "get_data" ||
+      call.name === "get_reference"
+    ) {
+      const kind =
+        call.name === "get_news" ? "news" : String(call.input.kind ?? "");
+      const query = String(call.input.query ?? "");
       hooks.onData?.(kind, query);
-      const res = await fetch('/api/tools/data', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+      const res = await fetch("/api/tools/data", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ kind, query }),
         signal,
       });
@@ -224,7 +246,7 @@ export async function executeTool(
         hooks.onRead?.();
       }
       return {
-        type: 'tool_result',
+        type: "tool_result",
         tool_use_id: call.id,
         content: `${json.text}\n\n(source: ${json.source ?? kind})`,
       };
@@ -232,7 +254,7 @@ export async function executeTool(
 
     return err(call, `unknown tool "${call.name}"`);
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
     return err(call, `${call.name} failed: ${String(e).slice(0, 200)}`);
   }
 }

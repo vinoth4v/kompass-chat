@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import {
   Check,
   Image as ImageIcon,
@@ -10,13 +10,13 @@ import {
   Trash2,
   Users,
   X,
-} from 'lucide-react';
-import { useMemo, useState } from 'react';
-import type { Conversation, ConversationMode } from '@/lib/types';
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import type { Conversation, ConversationMode } from "@/lib/types";
 
 function relTime(ts: number): string {
   const s = Math.max(0, (Date.now() - ts) / 1000);
-  if (s < 60) return 'just now';
+  if (s < 60) return "just now";
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
@@ -48,7 +48,7 @@ export function Sidebar({
   onClose: () => void;
   onOpenSettings: () => void;
 }) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const sorted = useMemo(
     () =>
@@ -68,7 +68,7 @@ export function Sidebar({
       )}
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-line bg-elevated transition-transform lg:static lg:z-auto lg:translate-x-0 ${
-          open ? 'translate-x-0' : '-translate-x-full'
+          open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center gap-2 p-3">
@@ -101,7 +101,9 @@ export function Sidebar({
         <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
           {sorted.length === 0 && (
             <p className="px-2 py-6 text-center text-xs text-ink-faint">
-              {conversations.length === 0 ? 'No conversations yet.' : 'No matches.'}
+              {conversations.length === 0
+                ? "No conversations yet."
+                : "No matches."}
             </p>
           )}
           {sorted.map((c) => {
@@ -114,13 +116,17 @@ export function Sidebar({
                 onClick={() => (confirming ? undefined : onSelect(c.id))}
                 onMouseLeave={() => confirming && setConfirmingId(null)}
                 className={`group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition ${
-                  active ? 'bg-surface-hover' : 'hover:bg-surface'
+                  active ? "bg-surface-hover" : "hover:bg-surface"
                 }`}
               >
                 <Icon size={15} className="shrink-0 text-ink-muted" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate">{c.title || 'New conversation'}</div>
-                  <div className="text-[0.72em] text-ink-faint">{relTime(c.updatedAt)}</div>
+                  <div className="truncate">
+                    {c.title || "New conversation"}
+                  </div>
+                  <div className="text-[0.72em] text-ink-faint">
+                    {relTime(c.updatedAt)}
+                  </div>
                 </div>
                 {confirming ? (
                   <div className="flex shrink-0 items-center gap-1">

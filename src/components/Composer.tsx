@@ -1,7 +1,14 @@
-'use client';
-import { FileText, Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
-import { useRef, useState } from 'react';
-import type { Attachment, ConversationMode } from '@/lib/types';
+"use client";
+import {
+  FileText,
+  Image as ImageIcon,
+  Paperclip,
+  Send,
+  Square,
+  X,
+} from "lucide-react";
+import { useRef, useState } from "react";
+import type { Attachment, ConversationMode } from "@/lib/types";
 
 /** Extensions treated as text even when the browser reports no MIME type —
  *  which it routinely does for source files. */
@@ -10,31 +17,36 @@ const TEXT_EXTENSIONS =
 
 const MAX_TEXT_BYTES = 400_000;
 
-function classify(file: File): Attachment['kind'] {
-  if (file.type.startsWith('image/')) return 'image';
-  if (file.type === 'application/pdf') return 'document';
-  return 'text';
+function classify(file: File): Attachment["kind"] {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type === "application/pdf") return "document";
+  return "text";
 }
 
 const PLACEHOLDERS: Record<ConversationMode, string> = {
-  chat: 'Message Kompass AI… (attach images, PDFs, code or data to ask about them)',
-  image: 'Describe the image you want to generate…',
-  research: 'What do you want researched? Kompass will search the web and cite sources…',
-  council: 'Ask the council…',
+  chat: "Message Kompass AI… (attach images, PDFs, code or data to ask about them)",
+  image: "Describe the image you want to generate…",
+  research:
+    "What do you want researched? Kompass will search the web and cite sources…",
+  council: "Ask the council…",
 };
 
 async function fileToAttachment(file: File): Promise<Attachment> {
   const kind = classify(file);
 
-  if (kind === 'text') {
-    if (!file.type.startsWith('text/') && !TEXT_EXTENSIONS.test(file.name) && file.type !== '') {
+  if (kind === "text") {
+    if (
+      !file.type.startsWith("text/") &&
+      !TEXT_EXTENSIONS.test(file.name) &&
+      file.type !== ""
+    ) {
       throw new Error(`unsupported file type: ${file.type || file.name}`);
     }
     const text = await file.text();
     return {
-      kind: 'text',
-      mediaType: file.type || 'text/plain',
-      data: '',
+      kind: "text",
+      mediaType: file.type || "text/plain",
+      data: "",
       // Truncated rather than refused: a 2MB log is still worth asking about,
       // and the model is told plainly that the tail was cut.
       text:
@@ -50,14 +62,14 @@ async function fileToAttachment(file: File): Promise<Attachment> {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      resolve(result.slice(result.indexOf(',') + 1));
+      resolve(result.slice(result.indexOf(",") + 1));
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
   return {
     kind,
-    mediaType: file.type || 'application/octet-stream',
+    mediaType: file.type || "application/octet-stream",
     data,
     name: file.name,
     size: file.size,
@@ -75,7 +87,7 @@ export function Composer({
   onSend: (text: string, images: Attachment[]) => void;
   onStop: () => void;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
   const [images, setImages] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,7 +96,7 @@ export function Composer({
   const resize = () => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     el.style.height = `${Math.min(200, el.scrollHeight)}px`;
   };
 
@@ -93,7 +105,7 @@ export function Composer({
     if (!trimmed && images.length === 0) return;
     if (busy) return;
     onSend(trimmed, images);
-    setText('');
+    setText("");
     setImages([]);
     requestAnimationFrame(resize);
   };
@@ -101,9 +113,13 @@ export function Composer({
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
     setAttachError(null);
-    const settled = await Promise.allSettled(Array.from(files).slice(0, 6).map(fileToAttachment));
-    const ok = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
-    const failed = settled.filter((r) => r.status === 'rejected').length;
+    const settled = await Promise.allSettled(
+      Array.from(files).slice(0, 6).map(fileToAttachment),
+    );
+    const ok = settled.flatMap((r) =>
+      r.status === "fulfilled" ? [r.value] : [],
+    );
+    const failed = settled.filter((r) => r.status === "rejected").length;
     if (failed > 0) setAttachError(`${failed} file(s) could not be attached.`);
     setImages((prev) => [...prev, ...ok].slice(0, 6));
   };
@@ -114,16 +130,18 @@ export function Composer({
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        if (mode !== 'image') void handleFiles(e.dataTransfer.files);
+        if (mode !== "image") void handleFiles(e.dataTransfer.files);
       }}
     >
       <div className="mx-auto w-full max-w-thread">
-        {attachError && <p className="mb-2 text-[0.75rem] text-danger">{attachError}</p>}
+        {attachError && (
+          <p className="mb-2 text-[0.75rem] text-danger">{attachError}</p>
+        )}
         {images.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {images.map((img, i) => (
               <div key={i} className="group relative">
-                {img.kind === 'image' ? (
+                {img.kind === "image" ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={`data:${img.mediaType};base64,${img.data}`}
@@ -132,23 +150,30 @@ export function Composer({
                   />
                 ) : (
                   <div className="flex h-16 max-w-[190px] items-center gap-2 rounded-xl border border-line bg-surface px-3">
-                    {img.kind === 'document' ? (
+                    {img.kind === "document" ? (
                       <FileText size={16} className="shrink-0 text-ink-muted" />
                     ) : (
-                      <ImageIcon size={16} className="shrink-0 text-ink-muted opacity-0" />
+                      <ImageIcon
+                        size={16}
+                        className="shrink-0 text-ink-muted opacity-0"
+                      />
                     )}
                     <div className="min-w-0">
-                      <div className="truncate text-[0.78rem] text-ink">{img.name}</div>
+                      <div className="truncate text-[0.78rem] text-ink">
+                        {img.name}
+                      </div>
                       <div className="text-[0.7rem] text-ink-muted">
-                        {img.kind === 'document'
-                          ? 'PDF'
+                        {img.kind === "document"
+                          ? "PDF"
                           : `${Math.max(1, Math.round((img.text?.length ?? 0) / 1024))} KB text`}
                       </div>
                     </div>
                   </div>
                 )}
                 <button
-                  onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                  onClick={() =>
+                    setImages((prev) => prev.filter((_, j) => j !== i))
+                  }
                   className="absolute -right-1.5 -top-1.5 rounded-full bg-elevated p-1 text-ink shadow-md ring-1 ring-line-strong transition hover:bg-surface-hover"
                 >
                   <X size={12} />
@@ -159,7 +184,7 @@ export function Composer({
         )}
 
         <div className="flex items-end gap-1.5 rounded-[1.6rem] border border-line bg-elevated p-2 shadow-md transition-colors duration-200 focus-within:border-line-strong">
-          {mode !== 'image' && (
+          {mode !== "image" && (
             <>
               <input
                 ref={fileInputRef}
@@ -187,7 +212,7 @@ export function Composer({
               resize();
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
               }

@@ -1,12 +1,12 @@
-'use client';
-import { useEffect, useRef, useState } from 'react';
-import { Composer } from '@/components/Composer';
-import { CouncilView } from '@/components/CouncilView';
-import { LoginScreen } from '@/components/LoginScreen';
-import { MessageList } from '@/components/MessageList';
-import { SettingsModal } from '@/components/SettingsModal';
-import { Sidebar } from '@/components/Sidebar';
-import { TopBar } from '@/components/TopBar';
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { Composer } from "@/components/Composer";
+import { CouncilView } from "@/components/CouncilView";
+import { LoginScreen } from "@/components/LoginScreen";
+import { MessageList } from "@/components/MessageList";
+import { SettingsModal } from "@/components/SettingsModal";
+import { Sidebar } from "@/components/Sidebar";
+import { TopBar } from "@/components/TopBar";
 import {
   KompassApiError,
   generateImage,
@@ -14,8 +14,8 @@ import {
   verifyConnection,
   type AnthropicContentBlockWire,
   type AnthropicMessageWire,
-} from '@/lib/kompassClient';
-import { runChatWithTools, runResearch } from '@/lib/research';
+} from "@/lib/kompassClient";
+import { runChatWithTools, runResearch } from "@/lib/research";
 import {
   clearAllData,
   loadConversations,
@@ -23,7 +23,7 @@ import {
   newId,
   saveConversations,
   saveSettings,
-} from '@/lib/storage';
+} from "@/lib/storage";
 import {
   DEFAULT_SETTINGS,
   type ChatMessage,
@@ -32,27 +32,27 @@ import {
   type ImageAttachment,
   type KompassSettings,
   type LaneChoice,
-} from '@/lib/types';
+} from "@/lib/types";
 
 function deriveTitle(text: string): string {
-  const clean = text.trim().replace(/\s+/g, ' ');
+  const clean = text.trim().replace(/\s+/g, " ");
   return clean.length > 48 ? `${clean.slice(0, 48)}…` : clean;
 }
 
 function toWireMessages(messages: ChatMessage[]): AnthropicMessageWire[] {
   return messages.map((m) => {
-    if (m.role === 'user' && m.images?.length) {
+    if (m.role === "user" && m.images?.length) {
       const blocks: AnthropicContentBlockWire[] = [];
       for (const a of m.images) {
-        if (a.kind === 'image') {
+        if (a.kind === "image") {
           blocks.push({
-            type: 'image',
-            source: { type: 'base64', media_type: a.mediaType, data: a.data },
+            type: "image",
+            source: { type: "base64", media_type: a.mediaType, data: a.data },
           });
-        } else if (a.kind === 'document') {
+        } else if (a.kind === "document") {
           blocks.push({
-            type: 'document',
-            source: { type: 'base64', media_type: a.mediaType, data: a.data },
+            type: "document",
+            source: { type: "base64", media_type: a.mediaType, data: a.data },
             title: a.name,
           });
         } else {
@@ -60,13 +60,13 @@ function toWireMessages(messages: ChatMessage[]): AnthropicMessageWire[] {
           // this — no vision required — and the fence stops file contents from
           // being mistaken for instructions.
           blocks.push({
-            type: 'text',
-            text: `Attached file: ${a.name}\n\n\u0060\u0060\u0060\n${a.text ?? ''}\n\u0060\u0060\u0060`,
+            type: "text",
+            text: `Attached file: ${a.name}\n\n\u0060\u0060\u0060\n${a.text ?? ""}\n\u0060\u0060\u0060`,
           });
         }
       }
-      if (m.text) blocks.push({ type: 'text', text: m.text });
-      return { role: 'user', content: blocks };
+      if (m.text) blocks.push({ type: "text", text: m.text });
+      return { role: "user", content: blocks };
     }
     return { role: m.role, content: m.text };
   });
@@ -98,7 +98,10 @@ export default function Page() {
   }, [conversations, mounted]);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('light', settings?.theme === 'light');
+    document.documentElement.classList.toggle(
+      "light",
+      settings?.theme === "light",
+    );
   }, [settings?.theme]);
 
   useEffect(() => {
@@ -118,14 +121,14 @@ export default function Page() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         createConversation();
       }
-      if (e.key === 'Escape') setSettingsOpen(false);
+      if (e.key === "Escape") setSettingsOpen(false);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
@@ -143,19 +146,24 @@ export default function Page() {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
 
-  function updateConversation(id: string, updater: (c: Conversation) => Conversation) {
+  function updateConversation(
+    id: string,
+    updater: (c: Conversation) => Conversation,
+  ) {
     setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...updater(c), updatedAt: Date.now() } : c)),
+      prev.map((c) =>
+        c.id === id ? { ...updater(c), updatedAt: Date.now() } : c,
+      ),
     );
   }
 
-  function createConversation(mode: ConversationMode = 'chat') {
+  function createConversation(mode: ConversationMode = "chat") {
     const conv: Conversation = {
       id: newId(),
-      title: '',
+      title: "",
       mode,
-      lane: settings?.defaultLane ?? 'kompass',
-      systemPrompt: '',
+      lane: settings?.defaultLane ?? "kompass",
+      systemPrompt: "",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messages: [],
@@ -171,7 +179,10 @@ export default function Page() {
   }
 
   function appendAssistant(conversationId: string, message: ChatMessage) {
-    updateConversation(conversationId, (c) => ({ ...c, messages: [...c.messages, message] }));
+    updateConversation(conversationId, (c) => ({
+      ...c,
+      messages: [...c.messages, message],
+    }));
   }
 
   async function runTurn(
@@ -184,23 +195,32 @@ export default function Page() {
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
     try {
-      if (mode === 'image') {
-        const result = await generateImage(settings, lastUser?.text ?? '', controller.signal);
+      if (mode === "image") {
+        const result = await generateImage(
+          settings,
+          lastUser?.text ?? "",
+          controller.signal,
+        );
         appendAssistant(conversationId, {
           id: newId(),
-          role: 'assistant',
-          text: '',
+          role: "assistant",
+          text: "",
           generatedImage: { b64: result.b64, mime: result.mime },
           servedBy: result.model,
           createdAt: Date.now(),
         });
-      } else if (mode === 'research') {
-        const result = await runResearch(settings, lane, lastUser?.text ?? '', controller.signal);
+      } else if (mode === "research") {
+        const result = await runResearch(
+          settings,
+          lane,
+          lastUser?.text ?? "",
+          controller.signal,
+        );
         appendAssistant(conversationId, {
           id: newId(),
-          role: 'assistant',
+          role: "assistant",
           text: result.text,
           sources: result.sources,
           followups: result.followups,
@@ -221,7 +241,7 @@ export default function Page() {
         );
         appendAssistant(conversationId, {
           id: newId(),
-          role: 'assistant',
+          role: "assistant",
           text: result.text,
           sources: result.sources.length > 0 ? result.sources : undefined,
           followups: result.followups,
@@ -232,11 +252,11 @@ export default function Page() {
         });
       }
     } catch (e) {
-      const aborted = e instanceof DOMException && e.name === 'AbortError';
+      const aborted = e instanceof DOMException && e.name === "AbortError";
       if (!aborted) {
         appendAssistant(conversationId, {
           id: newId(),
-          role: 'assistant',
+          role: "assistant",
           text: e instanceof KompassApiError ? e.message : String(e),
           error: true,
           createdAt: Date.now(),
@@ -252,7 +272,7 @@ export default function Page() {
     if (!active) return;
     const userMsg: ChatMessage = {
       id: newId(),
-      role: 'user',
+      role: "user",
       text,
       images: images.length ? images : undefined,
       createdAt: Date.now(),
@@ -261,7 +281,7 @@ export default function Page() {
     updateConversation(active.id, (c) => ({
       ...c,
       messages: withUser,
-      title: c.title || deriveTitle(text || 'Image attached'),
+      title: c.title || deriveTitle(text || "Image attached"),
     }));
     void runTurn(active.id, active.mode, active.lane, withUser);
   }
@@ -269,7 +289,7 @@ export default function Page() {
   function handleRegenerate() {
     if (!active || busy) return;
     const trimmed = [...active.messages];
-    if (trimmed[trimmed.length - 1]?.role === 'assistant') trimmed.pop();
+    if (trimmed[trimmed.length - 1]?.role === "assistant") trimmed.pop();
     updateConversation(active.id, (c) => ({ ...c, messages: trimmed }));
     void runTurn(active.id, active.mode, active.lane, trimmed);
   }
@@ -279,7 +299,11 @@ export default function Page() {
     const idx = active.messages.findIndex((m) => m.id === messageId);
     if (idx < 0) return;
     const truncated = active.messages.slice(0, idx);
-    const edited: ChatMessage = { ...active.messages[idx]!, text, createdAt: Date.now() };
+    const edited: ChatMessage = {
+      ...active.messages[idx]!,
+      text,
+      createdAt: Date.now(),
+    };
     const next = [...truncated, edited];
     updateConversation(active.id, (c) => ({ ...c, messages: next }));
     void runTurn(active.id, active.mode, active.lane, next);
@@ -303,7 +327,7 @@ export default function Page() {
           setActiveId(id);
           setSidebarOpen(false);
         }}
-        onNew={() => createConversation('chat')}
+        onNew={() => createConversation("chat")}
         onDelete={deleteConversation}
         onClose={() => setSidebarOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -315,16 +339,20 @@ export default function Page() {
           connectionOk={connectionOk}
           theme={settings.theme}
           onToggleSidebar={() => setSidebarOpen(true)}
-          onModeChange={(mode) => active && updateConversation(active.id, (c) => ({ ...c, mode }))}
-          onLaneChange={(lane) => active && updateConversation(active.id, (c) => ({ ...c, lane }))}
+          onModeChange={(mode) =>
+            active && updateConversation(active.id, (c) => ({ ...c, mode }))
+          }
+          onLaneChange={(lane) =>
+            active && updateConversation(active.id, (c) => ({ ...c, lane }))
+          }
           onToggleTheme={() =>
             setSettingsState((s) =>
-              s ? { ...s, theme: s.theme === 'dark' ? 'light' : 'dark' } : s,
+              s ? { ...s, theme: s.theme === "dark" ? "light" : "dark" } : s,
             )
           }
         />
 
-        {active?.mode === 'council' ? (
+        {active?.mode === "council" ? (
           // Council owns its whole surface: its state is a structured run
           // (agents, phases, verdict), not a message list, so it does not use
           // MessageList/Composer at all.
@@ -353,7 +381,7 @@ export default function Page() {
           <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
             <p className="text-sm text-ink-muted">No conversation selected.</p>
             <button
-              onClick={() => createConversation('chat')}
+              onClick={() => createConversation("chat")}
               className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast hover:bg-accent-hover"
             >
               Start a new chat

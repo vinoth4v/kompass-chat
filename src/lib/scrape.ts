@@ -6,16 +6,18 @@
 const MAX_OUTPUT = 20_000;
 
 export function clip(s: string, max = MAX_OUTPUT): string {
-  return s.length > max ? s.slice(0, max) + `\n… [truncated ${s.length - max} chars]` : s;
+  return s.length > max
+    ? s.slice(0, max) + `\n… [truncated ${s.length - max} chars]`
+    : s;
 }
 
 export function decodeEntities(s: string): string {
   return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#x?\d+;/g, ' ');
+    .replace(/&#x?\d+;/g, " ");
 }
 
 export interface SearchResult {
@@ -40,41 +42,47 @@ export interface SearchResult {
  * /api/tools/web_search route) can report what actually served the query.
  */
 const BROWSER_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
-  '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const SEARCH_HEADERS = {
-  'user-agent': BROWSER_UA,
-  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'accept-language': 'en-US,en;q=0.9',
+  "user-agent": BROWSER_UA,
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "accept-language": "en-US,en;q=0.9",
 };
 
 function stripTags(s: string): string {
-  return decodeEntities(s.replace(/<[^>]+>/g, '')).trim();
+  return decodeEntities(s.replace(/<[^>]+>/g, "")).trim();
 }
 
 /** DuckDuckGo HTML — best quality when it lets us through. */
 async function ddgHtml(query: string): Promise<SearchResult[]> {
-  const res = await fetch('https://html.duckduckgo.com/html/', {
-    method: 'POST',
-    headers: { ...SEARCH_HEADERS, 'content-type': 'application/x-www-form-urlencoded' },
+  const res = await fetch("https://html.duckduckgo.com/html/", {
+    method: "POST",
+    headers: {
+      ...SEARCH_HEADERS,
+      "content-type": "application/x-www-form-urlencoded",
+    },
     body: `q=${encodeURIComponent(query)}`,
     signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
-  const linkRe = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const linkRe =
+    /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
   const snippetRe = /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-  const snippets = [...html.matchAll(snippetRe)].map((m) => stripTags(m[1] ?? ''));
+  const snippets = [...html.matchAll(snippetRe)].map((m) =>
+    stripTags(m[1] ?? ""),
+  );
   const out: SearchResult[] = [];
   let i = 0;
   for (const m of html.matchAll(linkRe)) {
     if (out.length >= 8) break;
-    let url = m[1] ?? '';
+    let url = m[1] ?? "";
     const uddg = /[?&]uddg=([^&]+)/.exec(url);
     if (uddg?.[1]) url = decodeURIComponent(uddg[1]);
     if (!/^https?:\/\//.test(url)) continue;
-    out.push({ title: stripTags(m[2] ?? ''), url, snippet: snippets[i] ?? '' });
+    out.push({ title: stripTags(m[2] ?? ""), url, snippet: snippets[i] ?? "" });
     i++;
   }
   return out;
@@ -82,33 +90,40 @@ async function ddgHtml(query: string): Promise<SearchResult[]> {
 
 /** DuckDuckGo Lite — a different frontend, sometimes allowed when the above is not. */
 async function ddgLite(query: string): Promise<SearchResult[]> {
-  const res = await fetch('https://lite.duckduckgo.com/lite/', {
-    method: 'POST',
-    headers: { ...SEARCH_HEADERS, 'content-type': 'application/x-www-form-urlencoded' },
+  const res = await fetch("https://lite.duckduckgo.com/lite/", {
+    method: "POST",
+    headers: {
+      ...SEARCH_HEADERS,
+      "content-type": "application/x-www-form-urlencoded",
+    },
     body: `q=${encodeURIComponent(query)}`,
     signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
   const out: SearchResult[] = [];
-  const linkRe = /<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const linkRe =
+    /<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
   for (const m of html.matchAll(linkRe)) {
     if (out.length >= 8) break;
-    let url = m[1] ?? '';
+    let url = m[1] ?? "";
     const uddg = /[?&]uddg=([^&]+)/.exec(url);
     if (uddg?.[1]) url = decodeURIComponent(uddg[1]);
     if (!/^https?:\/\//.test(url)) continue;
-    out.push({ title: stripTags(m[2] ?? ''), url, snippet: '' });
+    out.push({ title: stripTags(m[2] ?? ""), url, snippet: "" });
   }
   return out;
 }
 
 /** Mojeek — an independent index that tolerates plain HTTP clients. */
 async function mojeek(query: string): Promise<SearchResult[]> {
-  const res = await fetch(`https://www.mojeek.com/search?q=${encodeURIComponent(query)}`, {
-    headers: SEARCH_HEADERS,
-    signal: AbortSignal.timeout(12_000),
-  });
+  const res = await fetch(
+    `https://www.mojeek.com/search?q=${encodeURIComponent(query)}`,
+    {
+      headers: SEARCH_HEADERS,
+      signal: AbortSignal.timeout(12_000),
+    },
+  );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
   const out: SearchResult[] = [];
@@ -117,13 +132,20 @@ async function mojeek(query: string): Promise<SearchResult[]> {
   const blockRe = /<li[^>]*>([\s\S]*?)<\/li>/g;
   for (const b of html.matchAll(blockRe)) {
     if (out.length >= 8) break;
-    const block = b[1] ?? '';
-    const link = /<a[^>]*class="[^"]*ob[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
+    const block = b[1] ?? "";
+    const link =
+      /<a[^>]*class="[^"]*ob[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(
+        block,
+      );
     if (!link) continue;
-    const url = link[1] ?? '';
+    const url = link[1] ?? "";
     if (!/^https?:\/\//.test(url)) continue;
     const desc = /<p[^>]*class="[^"]*s[^"]*"[^>]*>([\s\S]*?)<\/p>/.exec(block);
-    out.push({ title: stripTags(link[2] ?? ''), url, snippet: stripTags(desc?.[1] ?? '') });
+    out.push({
+      title: stripTags(link[2] ?? ""),
+      url,
+      snippet: stripTags(desc?.[1] ?? ""),
+    });
   }
   return out;
 }
@@ -134,10 +156,12 @@ async function mojeek(query: string): Promise<SearchResult[]> {
  */
 async function wikipedia(query: string): Promise<SearchResult[]> {
   const url =
-    'https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=6&srsearch=' +
+    "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=6&srsearch=" +
     encodeURIComponent(query);
   const res = await fetch(url, {
-    headers: { 'user-agent': 'KompassAI/1.0 (https://github.com/vinoth4v/kompass)' },
+    headers: {
+      "user-agent": "KompassAI/1.0 (https://github.com/vinoth4v/kompass)",
+    },
     signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -146,7 +170,7 @@ async function wikipedia(query: string): Promise<SearchResult[]> {
   };
   return (json.query?.search ?? []).map((r) => ({
     title: r.title,
-    url: `https://en.wikipedia.org/wiki/${encodeURIComponent(r.title.replace(/ /g, '_'))}`,
+    url: `https://en.wikipedia.org/wiki/${encodeURIComponent(r.title.replace(/ /g, "_"))}`,
     snippet: stripTags(r.snippet),
   }));
 }
@@ -160,34 +184,41 @@ type Backend = { name: string; run: (q: string) => Promise<SearchResult[]> };
 
 async function brave(query: string): Promise<SearchResult[]> {
   const key = process.env.BRAVE_API_KEY;
-  if (!key) throw new Error('no key');
+  if (!key) throw new Error("no key");
   const res = await fetch(
     `https://api.search.brave.com/res/v1/web/search?count=8&q=${encodeURIComponent(query)}`,
     {
-      headers: { accept: 'application/json', 'x-subscription-token': key },
+      headers: { accept: "application/json", "x-subscription-token": key },
       signal: AbortSignal.timeout(12_000),
     },
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = (await res.json()) as {
-    web?: { results?: { title?: string; url?: string; description?: string }[] };
+    web?: {
+      results?: { title?: string; url?: string; description?: string }[];
+    };
   };
   return (json.web?.results ?? [])
     .filter((r) => r.url)
     .map((r) => ({
-      title: stripTags(r.title ?? r.url ?? ''),
+      title: stripTags(r.title ?? r.url ?? ""),
       url: r.url!,
-      snippet: stripTags(r.description ?? ''),
+      snippet: stripTags(r.description ?? ""),
     }));
 }
 
 async function tavily(query: string): Promise<SearchResult[]> {
   const key = process.env.TAVILY_API_KEY;
-  if (!key) throw new Error('no key');
-  const res = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ api_key: key, query, max_results: 8, search_depth: 'basic' }),
+  if (!key) throw new Error("no key");
+  const res = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      api_key: key,
+      query,
+      max_results: 8,
+      search_depth: "basic",
+    }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -199,16 +230,16 @@ async function tavily(query: string): Promise<SearchResult[]> {
     .map((r) => ({
       title: r.title ?? r.url!,
       url: r.url!,
-      snippet: (r.content ?? '').slice(0, 300),
+      snippet: (r.content ?? "").slice(0, 300),
     }));
 }
 
 async function serper(query: string): Promise<SearchResult[]> {
   const key = process.env.SERPER_API_KEY;
-  if (!key) throw new Error('no key');
-  const res = await fetch('https://google.serper.dev/search', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': key },
+  if (!key) throw new Error("no key");
+  const res = await fetch("https://google.serper.dev/search", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": key },
     body: JSON.stringify({ q: query, num: 8 }),
     signal: AbortSignal.timeout(12_000),
   });
@@ -218,16 +249,20 @@ async function serper(query: string): Promise<SearchResult[]> {
   };
   return (json.organic ?? [])
     .filter((r) => r.link)
-    .map((r) => ({ title: r.title ?? r.link!, url: r.link!, snippet: r.snippet ?? '' }));
+    .map((r) => ({
+      title: r.title ?? r.link!,
+      url: r.link!,
+      snippet: r.snippet ?? "",
+    }));
 }
 
 async function exa(query: string): Promise<SearchResult[]> {
   const key = process.env.EXA_API_KEY;
-  if (!key) throw new Error('no key');
-  const res = await fetch('https://api.exa.ai/search', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': key },
-    body: JSON.stringify({ query, numResults: 8, type: 'auto' }),
+  if (!key) throw new Error("no key");
+  const res = await fetch("https://api.exa.ai/search", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": key },
+    body: JSON.stringify({ query, numResults: 8, type: "auto" }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -236,7 +271,11 @@ async function exa(query: string): Promise<SearchResult[]> {
   };
   return (json.results ?? [])
     .filter((r) => r.url)
-    .map((r) => ({ title: r.title ?? r.url!, url: r.url!, snippet: (r.text ?? '').slice(0, 300) }));
+    .map((r) => ({
+      title: r.title ?? r.url!,
+      url: r.url!,
+      snippet: (r.text ?? "").slice(0, 300),
+    }));
 }
 
 // ── Keyless specialist sources ───────────────────────────────────────────────
@@ -253,14 +292,19 @@ async function hackernews(query: string): Promise<SearchResult[]> {
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = (await res.json()) as {
-    hits?: { title?: string; url?: string; objectID?: string; points?: number }[];
+    hits?: {
+      title?: string;
+      url?: string;
+      objectID?: string;
+      points?: number;
+    }[];
   };
   return (json.hits ?? [])
     .filter((h) => h.title)
     .map((h) => ({
       title: h.title!,
       url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
-      snippet: `Hacker News${h.points ? ` · ${h.points} points` : ''}`,
+      snippet: `Hacker News${h.points ? ` · ${h.points} points` : ""}`,
     }));
 }
 
@@ -270,8 +314,8 @@ async function github(query: string): Promise<SearchResult[]> {
     `https://api.github.com/search/repositories?per_page=5&sort=stars&q=${encodeURIComponent(query)}`,
     {
       headers: {
-        accept: 'application/vnd.github+json',
-        'user-agent': 'KompassAI/1.0 (https://github.com/vinoth4v/kompass)',
+        accept: "application/vnd.github+json",
+        "user-agent": "KompassAI/1.0 (https://github.com/vinoth4v/kompass)",
       },
       signal: AbortSignal.timeout(12_000),
     },
@@ -290,27 +334,32 @@ async function github(query: string): Promise<SearchResult[]> {
     .map((r) => ({
       title: `${r.full_name} (${r.stargazers_count ?? 0}★)`,
       url: r.html_url!,
-      snippet: r.description ?? '',
+      snippet: r.description ?? "",
     }));
 }
 
 /** Stack Overflow — concrete problems and their accepted answers. */
 async function stackexchange(query: string): Promise<SearchResult[]> {
   const res = await fetch(
-    'https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&pagesize=5&site=stackoverflow&q=' +
+    "https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&pagesize=5&site=stackoverflow&q=" +
       encodeURIComponent(query),
     { signal: AbortSignal.timeout(12_000) },
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = (await res.json()) as {
-    items?: { title?: string; link?: string; score?: number; is_answered?: boolean }[];
+    items?: {
+      title?: string;
+      link?: string;
+      score?: number;
+      is_answered?: boolean;
+    }[];
   };
   return (json.items ?? [])
     .filter((r) => r.link)
     .map((r) => ({
       title: decodeEntities(r.title ?? r.link!),
       url: r.link!,
-      snippet: `Stack Overflow · score ${r.score ?? 0}${r.is_answered ? ' · answered' : ''}`,
+      snippet: `Stack Overflow · score ${r.score ?? 0}${r.is_answered ? " · answered" : ""}`,
     }));
 }
 
@@ -324,16 +373,16 @@ async function arxiv(query: string): Promise<SearchResult[]> {
   const xml = await res.text();
   const out: SearchResult[] = [];
   for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
-    const e = m[1] ?? '';
+    const e = m[1] ?? "";
     const id = /<id>([^<]+)<\/id>/.exec(e)?.[1];
     const title = /<title>([\s\S]*?)<\/title>/.exec(e)?.[1];
     const summary = /<summary>([\s\S]*?)<\/summary>/.exec(e)?.[1];
     if (!id || !title) continue;
     out.push({
-      title: stripTags(title).replace(/\s+/g, ' '),
+      title: stripTags(title).replace(/\s+/g, " "),
       url: id.trim(),
-      snippet: stripTags(summary ?? '')
-        .replace(/\s+/g, ' ')
+      snippet: stripTags(summary ?? "")
+        .replace(/\s+/g, " ")
         .slice(0, 300),
     });
   }
@@ -347,10 +396,13 @@ async function arxiv(query: string): Promise<SearchResult[]> {
  * strength for research and a real weakness for mainstream/news queries.
  */
 async function marginalia(query: string): Promise<SearchResult[]> {
-  const res = await fetch(`https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`, {
-    headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(12_000),
-  });
+  const res = await fetch(
+    `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`,
+    {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(12_000),
+    },
+  );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = (await res.json()) as {
     results?: { url?: string; title?: string; description?: string }[];
@@ -361,24 +413,28 @@ async function marginalia(query: string): Promise<SearchResult[]> {
     .map((r) => ({
       title: stripTags(r.title ?? r.url!),
       url: r.url!,
-      snippet: stripTags(r.description ?? ''),
+      snippet: stripTags(r.description ?? ""),
     }));
 }
 
 /** mwmbl — an open-source, community-crawled index. Keyless API, modest
  *  coverage. Titles arrive as bolded segments, which are joined back together. */
 async function mwmbl(query: string): Promise<SearchResult[]> {
-  const res = await fetch(`https://api.mwmbl.org/api/v1/search/?s=${encodeURIComponent(query)}`, {
-    headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(12_000),
-  });
+  const res = await fetch(
+    `https://api.mwmbl.org/api/v1/search/?s=${encodeURIComponent(query)}`,
+    {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(12_000),
+    },
+  );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = (await res.json()) as {
     url?: string;
     title?: { value?: string }[];
     extract?: { value?: string }[];
   }[];
-  const join = (parts?: { value?: string }[]) => (parts ?? []).map((p) => p.value ?? '').join('');
+  const join = (parts?: { value?: string }[]) =>
+    (parts ?? []).map((p) => p.value ?? "").join("");
   return (Array.isArray(json) ? json : [])
     .filter((r) => r.url)
     .slice(0, 8)
@@ -390,28 +446,28 @@ async function mwmbl(query: string): Promise<SearchResult[]> {
 }
 
 const KEYED: Backend[] = [
-  { name: 'brave', run: brave },
-  { name: 'tavily', run: tavily },
-  { name: 'serper', run: serper },
-  { name: 'exa', run: exa },
+  { name: "brave", run: brave },
+  { name: "tavily", run: tavily },
+  { name: "serper", run: serper },
+  { name: "exa", run: exa },
 ];
 
 // Keyless general web. The scraped engines are listed first for quality but all
 // of them refuse datacenter IPs; marginalia and mwmbl are real APIs and do not.
 const KEYLESS_WEB: Backend[] = [
-  { name: 'duckduckgo', run: ddgHtml },
-  { name: 'duckduckgo-lite', run: ddgLite },
-  { name: 'mojeek', run: mojeek },
-  { name: 'marginalia', run: marginalia },
-  { name: 'mwmbl', run: mwmbl },
+  { name: "duckduckgo", run: ddgHtml },
+  { name: "duckduckgo-lite", run: ddgLite },
+  { name: "mojeek", run: mojeek },
+  { name: "marginalia", run: marginalia },
+  { name: "mwmbl", run: mwmbl },
 ];
 
 const SPECIALIST: Backend[] = [
-  { name: 'hackernews', run: hackernews },
-  { name: 'github', run: github },
-  { name: 'stackoverflow', run: stackexchange },
-  { name: 'wikipedia', run: wikipedia },
-  { name: 'arxiv', run: arxiv },
+  { name: "hackernews", run: hackernews },
+  { name: "github", run: github },
+  { name: "stackoverflow", run: stackexchange },
+  { name: "wikipedia", run: wikipedia },
+  { name: "arxiv", run: arxiv },
 ];
 
 export interface SearchOutcome {
@@ -466,12 +522,12 @@ export async function webSearchDetailed(query: string): Promise<SearchOutcome> {
   const used: string[] = [];
   settled.forEach((r, i) => {
     const name = SPECIALIST[i]!.name;
-    if (r.status === 'fulfilled' && r.value.length > 0) {
+    if (r.status === "fulfilled" && r.value.length > 0) {
       used.push(name);
       merged.push(...r.value);
     } else {
       tried.push(
-        `${name}: ${r.status === 'rejected' ? String(r.reason).slice(0, 60) : '0 results'}`,
+        `${name}: ${r.status === "rejected" ? String(r.reason).slice(0, 60) : "0 results"}`,
       );
     }
   });
@@ -480,39 +536,45 @@ export async function webSearchDetailed(query: string): Promise<SearchOutcome> {
     // Interleave so one prolific source cannot crowd the others out of the top.
     const bySource = new Map<string, SearchResult[]>();
     settled.forEach((r, i) => {
-      if (r.status === 'fulfilled' && r.value.length > 0)
+      if (r.status === "fulfilled" && r.value.length > 0)
         bySource.set(SPECIALIST[i]!.name, r.value);
     });
     const interleaved: SearchResult[] = [];
     for (let i = 0; i < 6; i++) {
-      for (const list of bySource.values()) if (list[i]) interleaved.push(list[i]!);
+      for (const list of bySource.values())
+        if (list[i]) interleaved.push(list[i]!);
     }
-    return { results: dedupe(interleaved).slice(0, 12), backend: used.join('+'), tried };
+    return {
+      results: dedupe(interleaved).slice(0, 12),
+      backend: used.join("+"),
+      tried,
+    };
   }
 
-  return { results: [], backend: 'none', tried };
+  return { results: [], backend: "none", tried };
 }
 
 export async function webSearch(query: string): Promise<SearchResult[]> {
   const { results, tried } = await webSearchDetailed(query);
-  if (results.length === 0) throw new Error(`all search backends failed — ${tried.join('; ')}`);
+  if (results.length === 0)
+    throw new Error(`all search backends failed — ${tried.join("; ")}`);
   return results;
 }
 
 export async function webFetch(url: string): Promise<string> {
   const res = await fetch(url, {
-    headers: { 'user-agent': 'Mozilla/5.0 (Macintosh) KompassAI/1.0' },
+    headers: { "user-agent": "Mozilla/5.0 (Macintosh) KompassAI/1.0" },
     signal: AbortSignal.timeout(20_000),
-    redirect: 'follow',
+    redirect: "follow",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
   const text = decodeEntities(
     html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' '),
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " "),
   ).trim();
   return clip(text);
 }

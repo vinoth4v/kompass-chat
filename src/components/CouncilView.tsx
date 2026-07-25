@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
 // AI Council UI: configure the seats, watch each agent research live, then read
 // the judge's synthesis with the disagreements kept visible rather than smoothed
 // away. Deliberately shows failed agents instead of hiding them — on free models
 // a partial council is the normal case, and a user judging an answer deserves to
 // know it came from two seats rather than four.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
   ChevronDown,
@@ -23,28 +23,42 @@ import {
   Square,
   Users,
   XCircle,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   runCouncil,
   type AgentSpec,
   type AgentState,
   type CouncilRun,
   type ResearchDepth,
-} from '@/lib/council';
-import { fetchModelRoster, fetchStatus, type RosterEntry } from '@/lib/kompassClient';
-import { planCouncil, type CouncilPlan, type StatusSnapshot } from '@/lib/councilPlanner';
-import type { KompassSettings } from '@/lib/types';
+} from "@/lib/council";
+import {
+  fetchModelRoster,
+  fetchStatus,
+  type RosterEntry,
+} from "@/lib/kompassClient";
+import {
+  planCouncil,
+  type CouncilPlan,
+  type StatusSnapshot,
+} from "@/lib/councilPlanner";
+import type { KompassSettings } from "@/lib/types";
 
 /** Lane pseudo-models always available, even before the roster loads. */
 const LANE_OPTIONS = [
-  { value: 'kompass', label: 'Auto (classifier picks)' },
-  { value: 'kompass-agentic', label: 'Agentic lane' },
-  { value: 'kompass-hard', label: 'Hard lane' },
-  { value: 'kompass-simple', label: 'Simple lane' },
-  { value: 'kompass-fast', label: 'Fast lane' },
+  { value: "kompass", label: "Auto (classifier picks)" },
+  { value: "kompass-agentic", label: "Agentic lane" },
+  { value: "kompass-hard", label: "Hard lane" },
+  { value: "kompass-simple", label: "Simple lane" },
+  { value: "kompass-fast", label: "Fast lane" },
 ];
 
-const SEAT_NAMES = ['Analyst A', 'Analyst B', 'Analyst C', 'Analyst D', 'Analyst E'];
+const SEAT_NAMES = [
+  "Analyst A",
+  "Analyst B",
+  "Analyst C",
+  "Analyst D",
+  "Analyst E",
+];
 
 function defaultAgents(count: number, roster: RosterEntry[]): AgentSpec[] {
   // Give each seat a DIFFERENT model where possible. A council of identical
@@ -52,36 +66,43 @@ function defaultAgents(count: number, roster: RosterEntry[]): AgentSpec[] {
   return Array.from({ length: count }, (_, i) => ({
     id: `agent-${i}`,
     label: SEAT_NAMES[i] ?? `Analyst ${i + 1}`,
-    model: roster[i]?.entry ?? 'kompass-agentic',
+    model: roster[i]?.entry ?? "kompass-agentic",
   }));
 }
 
 function PhaseBadge({ agent }: { agent: AgentState }) {
-  const map: Record<AgentState['phase'], { text: string; cls: string; icon: React.ReactNode }> = {
-    queued: { text: 'queued', cls: 'bg-surface-hover text-ink-muted', icon: null },
+  const map: Record<
+    AgentState["phase"],
+    { text: string; cls: string; icon: React.ReactNode }
+  > = {
+    queued: {
+      text: "queued",
+      cls: "bg-surface-hover text-ink-muted",
+      icon: null,
+    },
     searching: {
-      text: 'searching',
-      cls: 'bg-info-soft text-info',
+      text: "searching",
+      cls: "bg-info-soft text-info",
       icon: <Search className="h-3 w-3" />,
     },
     reading: {
-      text: 'reading',
-      cls: 'bg-accent-soft text-accent',
+      text: "reading",
+      cls: "bg-accent-soft text-accent",
       icon: <Globe className="h-3 w-3" />,
     },
     thinking: {
-      text: 'thinking',
-      cls: 'bg-warn-soft text-warn',
+      text: "thinking",
+      cls: "bg-warn-soft text-warn",
       icon: <Loader2 className="h-3 w-3 animate-spin" />,
     },
     done: {
-      text: 'done',
-      cls: 'bg-ok-soft text-ok',
+      text: "done",
+      cls: "bg-ok-soft text-ok",
       icon: null,
     },
     failed: {
-      text: 'failed',
-      cls: 'bg-danger-soft text-danger',
+      text: "failed",
+      cls: "bg-danger-soft text-danger",
       icon: <XCircle className="h-3 w-3" />,
     },
   };
@@ -98,20 +119,22 @@ function PhaseBadge({ agent }: { agent: AgentState }) {
 
 function AgentCard({ agent }: { agent: AgentState }) {
   const [open, setOpen] = useState(false);
-  const busy = ['searching', 'reading', 'thinking'].includes(agent.phase);
+  const busy = ["searching", "reading", "thinking"].includes(agent.phase);
   return (
     <div
       className={`flex flex-col rounded-xl border p-3 transition ${
-        agent.phase === 'failed'
-          ? 'border-danger/40 bg-danger-soft'
+        agent.phase === "failed"
+          ? "border-danger/40 bg-danger-soft"
           : busy
-            ? 'border-brand-500/40 bg-surface'
-            : 'border-line bg-surface'
+            ? "border-brand-500/40 bg-surface"
+            : "border-line bg-surface"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-ink">{agent.spec.label}</div>
+          <div className="truncate text-sm font-medium text-ink">
+            {agent.spec.label}
+          </div>
           <div className="truncate font-mono text-[11px] text-ink-muted">
             {agent.servedBy ?? agent.spec.model}
           </div>
@@ -129,24 +152,32 @@ function AgentCard({ agent }: { agent: AgentState }) {
         <div className="mt-2 text-[11px] text-ink-muted">
           {agent.replacedWith
             ? `Preferred model was unavailable — switched to ${agent.replacedWith}.`
-            : 'Preferred model was unavailable — ran on automatic lane routing instead.'}
+            : "Preferred model was unavailable — ran on automatic lane routing instead."}
         </div>
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-muted">
         <span>{agent.searches} searches</span>
         <span
-          className={agent.phase === 'done' && agent.reads === 0 ? 'text-warn' : undefined}
+          className={
+            agent.phase === "done" && agent.reads === 0
+              ? "text-warn"
+              : undefined
+          }
           title={
-            agent.phase === 'done' && agent.reads === 0
-              ? 'Answered without fetching any page — treat this finding with caution.'
+            agent.phase === "done" && agent.reads === 0
+              ? "Answered without fetching any page — treat this finding with caution."
               : undefined
           }
         >
           {agent.reads} pages read
         </span>
-        {agent.elapsedMs !== undefined && <span>{(agent.elapsedMs / 1000).toFixed(1)}s</span>}
-        {agent.usage && <span>{agent.usage.input + agent.usage.output} tok</span>}
+        {agent.elapsedMs !== undefined && (
+          <span>{(agent.elapsedMs / 1000).toFixed(1)}s</span>
+        )}
+        {agent.usage && (
+          <span>{agent.usage.input + agent.usage.output} tok</span>
+        )}
       </div>
 
       {agent.error && (
@@ -160,15 +191,21 @@ function AgentCard({ agent }: { agent: AgentState }) {
           onClick={() => setOpen((v) => !v)}
           className="mt-2 flex items-center gap-1 self-start text-[11px] text-ink-muted transition hover:text-ink"
         >
-          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          {open ? 'hide' : 'show'} findings
+          {open ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+          {open ? "hide" : "show"} findings
         </button>
       )}
 
       {open && agent.answer && (
         <div className="mt-2 border-t border-line pt-2">
           <div className="kompass-prose max-h-72 overflow-y-auto text-[13px] text-ink-secondary">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{agent.answer}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {agent.answer}
+            </ReactMarkdown>
           </div>
           {agent.sources.length > 0 && (
             <ul className="mt-2 space-y-1">
@@ -197,14 +234,14 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [agentCount, setAgentCount] = useState(3);
   const [agents, setAgents] = useState<AgentSpec[]>(() => defaultAgents(3, []));
-  const [judgeModel, setJudgeModel] = useState('kompass-hard');
-  const [depth, setDepth] = useState<ResearchDepth>('fast');
+  const [judgeModel, setJudgeModel] = useState("kompass-hard");
+  const [depth, setDepth] = useState<ResearchDepth>("fast");
   // Auto composition is the default and the point: the gateway knows which
   // models are reliable, fast and have quota left, and the user cannot.
   const [auto, setAuto] = useState(true);
   const [plan, setPlan] = useState<CouncilPlan | null>(null);
   const [planning, setPlanning] = useState(false);
-  const [question, setQuestion] = useState('');
+  const [question, setQuestion] = useState("");
   const [run, setRun] = useState<CouncilRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [configOpen, setConfigOpen] = useState(true);
@@ -217,7 +254,11 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
       const p = planCouncil(status, agentCount);
       setPlan(p);
       setAgents(
-        p.seats.map((seat, i) => ({ id: `agent-${i}`, label: seat.label, model: seat.model })),
+        p.seats.map((seat, i) => ({
+          id: `agent-${i}`,
+          label: seat.label,
+          model: seat.model,
+        })),
       );
       setJudgeModel(p.judge.model);
     } catch {
@@ -241,7 +282,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
         if (cancelled) return;
         setRoster(r);
         setAgents((prev) =>
-          prev.every((a) => a.model === 'kompass-agentic') ? defaultAgents(prev.length, r) : prev,
+          prev.every((a) => a.model === "kompass-agentic")
+            ? defaultAgents(prev.length, r)
+            : prev,
         );
       })
       .catch(() => {
@@ -269,7 +312,7 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
       ...LANE_OPTIONS,
       ...roster.map((r) => ({
         value: r.entry,
-        label: `${r.entry}${r.rate !== undefined ? `  (${r.rate}%)` : ''}`,
+        label: `${r.entry}${r.rate !== undefined ? `  (${r.rate}%)` : ""}`,
       })),
     ],
     [roster],
@@ -302,8 +345,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
   }
 
   const verdict = run?.verdict;
-  const doneCount = run?.agents.filter((a) => a.phase === 'done').length ?? 0;
-  const failedCount = run?.agents.filter((a) => a.phase === 'failed').length ?? 0;
+  const doneCount = run?.agents.filter((a) => a.phase === "done").length ?? 0;
+  const failedCount =
+    run?.agents.filter((a) => a.phase === "failed").length ?? 0;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-6">
@@ -321,10 +365,14 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
           onClick={() => setConfigOpen((v) => !v)}
           className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-ink-secondary"
         >
-          {configOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          {configOpen ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
           Council setup
           <span className="ml-auto text-xs text-ink-muted">
-            {auto ? 'auto' : 'manual'} · {agents.length} agents · {depth}
+            {auto ? "auto" : "manual"} · {agents.length} agents · {depth}
           </span>
         </button>
 
@@ -362,15 +410,15 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
               <div className="flex items-center gap-1 text-xs text-ink-secondary">
                 Mode
                 <div className="ml-1 flex overflow-hidden rounded-md border border-line">
-                  {(['fast', 'deep'] as ResearchDepth[]).map((d) => (
+                  {(["fast", "deep"] as ResearchDepth[]).map((d) => (
                     <button
                       key={d}
                       onClick={() => setDepth(d)}
                       disabled={busy}
                       className={`px-2.5 py-1 transition ${
                         depth === d
-                          ? 'bg-accent font-medium text-accent-contrast'
-                          : 'text-ink-secondary hover:bg-surface'
+                          ? "bg-accent font-medium text-accent-contrast"
+                          : "text-ink-secondary hover:bg-surface"
                       }`}
                     >
                       {d}
@@ -385,7 +433,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                   disabled={busy || planning}
                   className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-ink-secondary transition hover:bg-surface disabled:opacity-40"
                 >
-                  <RefreshCw className={`h-3 w-3 ${planning ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`h-3 w-3 ${planning ? "animate-spin" : ""}`}
+                  />
                   re-check
                 </button>
               )}
@@ -400,11 +450,15 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                     key={seat.model}
                     className="flex flex-wrap items-baseline gap-x-2 rounded-lg border border-line bg-surface px-2.5 py-1.5"
                   >
-                    <span className="w-20 shrink-0 text-xs text-ink-muted">{seat.label}</span>
+                    <span className="w-20 shrink-0 text-xs text-ink-muted">
+                      {seat.label}
+                    </span>
                     <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink">
                       {seat.model}
                     </span>
-                    <span className="text-[11px] text-ink-muted">{seat.why}</span>
+                    <span className="text-[11px] text-ink-muted">
+                      {seat.why}
+                    </span>
                   </div>
                 ))}
                 <div className="flex flex-wrap items-baseline gap-x-2 rounded-lg border border-brand-500/20 bg-accent/5 px-2.5 py-1.5">
@@ -414,7 +468,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink">
                     {plan.judge.model}
                   </span>
-                  <span className="text-[11px] text-ink-muted">{plan.judge.why}</span>
+                  <span className="text-[11px] text-ink-muted">
+                    {plan.judge.why}
+                  </span>
                 </div>
                 {plan.notes.map((n, i) => (
                   <p key={i} className="px-1 text-[11px] text-warn">
@@ -426,7 +482,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
 
             {auto && !plan && (
               <p className="text-[11px] text-ink-muted">
-                {planning ? 'Reading gateway health…' : 'Could not reach the gateway to compose.'}
+                {planning
+                  ? "Reading gateway health…"
+                  : "Could not reach the gateway to compose."}
               </p>
             )}
 
@@ -435,13 +493,17 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
               <div className="space-y-2">
                 {agents.map((a, i) => (
                   <div key={a.id} className="flex items-center gap-2">
-                    <span className="w-20 shrink-0 text-xs text-ink-muted">{a.label}</span>
+                    <span className="w-20 shrink-0 text-xs text-ink-muted">
+                      {a.label}
+                    </span>
                     <select
                       value={a.model}
                       disabled={busy}
                       onChange={(e) =>
                         setAgents((prev) =>
-                          prev.map((x, xi) => (xi === i ? { ...x, model: e.target.value } : x)),
+                          prev.map((x, xi) =>
+                            xi === i ? { ...x, model: e.target.value } : x,
+                          ),
                         )
                       }
                       className="min-w-0 flex-1 rounded-md border border-line bg-elevated px-2 py-1 text-xs text-ink"
@@ -455,7 +517,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                   </div>
                 ))}
                 <div className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-xs text-ink-muted">Judge</span>
+                  <span className="w-20 shrink-0 text-xs text-ink-muted">
+                    Judge
+                  </span>
                   <select
                     value={judgeModel}
                     onChange={(e) => setJudgeModel(e.target.value)}
@@ -474,8 +538,8 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
 
             <p className="text-[11px] leading-relaxed text-ink-faint">
               {auto
-                ? 'Seats are chosen from live gateway health: measured success rate, median latency, remaining quota, and one model per provider so seats do not compete for the same rate limit. Re-checked each time you open this panel — cooldowns move minute to minute.'
-                : 'Manual seating. Watch for putting several seats on one provider: they share a rate-limit bucket and will starve each other under parallel load.'}
+                ? "Seats are chosen from live gateway health: measured success rate, median latency, remaining quota, and one model per provider so seats do not compete for the same rate limit. Re-checked each time you open this panel — cooldowns move minute to minute."
+                : "Manual seating. Watch for putting several seats on one provider: they share a rate-limit bucket and will starve each other under parallel load."}
             </p>
           </div>
         )}
@@ -487,7 +551,7 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               void start();
             }
@@ -527,16 +591,18 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
           <div className="rounded-xl border border-line bg-surface p-4">
             <div className="flex items-center gap-2">
               <Scale className="h-4 w-4 text-accent" />
-              <span className="text-sm font-medium text-ink">Council Judge</span>
-              {run.judgePhase === 'deliberating' && (
+              <span className="text-sm font-medium text-ink">
+                Council Judge
+              </span>
+              {run.judgePhase === "deliberating" && (
                 <span className="flex items-center gap-1 text-xs text-warn">
                   <Loader2 className="h-3 w-3 animate-spin" /> deliberating
                 </span>
               )}
-              {run.judgePhase === 'waiting' && (
+              {run.judgePhase === "waiting" && (
                 <span className="text-xs text-ink-muted">
-                  waiting for agents ({doneCount} done{failedCount ? `, ${failedCount} failed` : ''}
-                  )
+                  waiting for agents ({doneCount} done
+                  {failedCount ? `, ${failedCount} failed` : ""})
                 </span>
               )}
               {verdict?.servedBy && (
@@ -552,7 +618,8 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                 <div>
                   {run.judgeError}
                   <div className="mt-1 text-danger">
-                    The individual findings above are unaffected — the research still stands.
+                    The individual findings above are unaffected — the research
+                    still stands.
                   </div>
                 </div>
               </div>
@@ -562,15 +629,16 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
               <div className="mt-3 space-y-4">
                 {failedCount > 0 && (
                   <div className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
-                    Synthesized from {doneCount} of {run.agents.length} agents — {failedCount}{' '}
-                    failed. Weigh accordingly.
+                    Synthesized from {doneCount} of {run.agents.length} agents —{" "}
+                    {failedCount} failed. Weigh accordingly.
                   </div>
                 )}
 
                 {verdict.degraded && (
                   <div className="rounded-md bg-surface px-3 py-2 text-xs text-ink-muted">
-                    The judge did not return a parseable structure, so agreements and disagreements
-                    could not be separated out. Its full reply is below.
+                    The judge did not return a parseable structure, so
+                    agreements and disagreements could not be separated out. Its
+                    full reply is below.
                   </div>
                 )}
 
@@ -581,11 +649,19 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                     </h3>
                     <ul className="space-y-2">
                       {verdict.disagreements.map((d, i) => (
-                        <li key={i} className="rounded-lg border border-warn/40 bg-warn-soft p-2.5">
-                          <div className="text-[13px] font-medium text-ink">{d.point}</div>
+                        <li
+                          key={i}
+                          className="rounded-lg border border-warn/40 bg-warn-soft p-2.5"
+                        >
+                          <div className="text-[13px] font-medium text-ink">
+                            {d.point}
+                          </div>
                           <ul className="mt-1 space-y-0.5">
                             {d.positions.map((p, pi) => (
-                              <li key={pi} className="text-[12px] text-ink-secondary">
+                              <li
+                                key={pi}
+                                className="text-[12px] text-ink-secondary"
+                              >
                                 • {p}
                               </li>
                             ))}
@@ -616,7 +692,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                     Final answer
                   </h3>
                   <div className="kompass-prose text-[14px] text-ink">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{verdict.answer}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {verdict.answer}
+                    </ReactMarkdown>
                   </div>
                 </div>
 
@@ -628,7 +706,9 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                     <ol className="space-y-1">
                       {verdict.sources.map((s, i) => (
                         <li key={s.url} className="flex gap-2 text-[12px]">
-                          <span className="shrink-0 text-ink-faint">[{i + 1}]</span>
+                          <span className="shrink-0 text-ink-faint">
+                            [{i + 1}]
+                          </span>
                           <a
                             href={s.url}
                             target="_blank"
@@ -641,8 +721,8 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                       ))}
                     </ol>
                     <p className="mt-2 text-[11px] text-ink-faint">
-                      Every source listed was actually fetched by an agent during this run — none
-                      are model-generated.
+                      Every source listed was actually fetched by an agent
+                      during this run — none are model-generated.
                     </p>
                   </div>
                 )}

@@ -1,13 +1,13 @@
 // All state lives in the browser's localStorage — no backend, no database.
 // This mirrors the project's "$0 infra" ethos and the local `kompass ui`'s own
 // per-machine persistence (~/.kompass/ui/), just scoped per-browser instead.
-import type { Conversation, KompassSettings } from './types';
+import type { Conversation, KompassSettings } from "./types";
 
-const SETTINGS_KEY = 'kompass_chat_settings_v1';
-const CONVERSATIONS_KEY = 'kompass_chat_conversations_v1';
+const SETTINGS_KEY = "kompass_chat_settings_v1";
+const CONVERSATIONS_KEY = "kompass_chat_conversations_v1";
 
 function isBrowser(): boolean {
-  return typeof window !== 'undefined';
+  return typeof window !== "undefined";
 }
 
 export function loadSettings(): KompassSettings | null {
@@ -46,11 +46,14 @@ export function loadConversations(): Conversation[] {
 export function saveConversations(conversations: Conversation[]): void {
   if (!isBrowser()) return;
   try {
-    window.localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations));
+    window.localStorage.setItem(
+      CONVERSATIONS_KEY,
+      JSON.stringify(conversations),
+    );
   } catch (e) {
     // Quota exceeded (localStorage ~5-10MB) — most likely from large base64
     // image attachments piling up across many conversations.
-    console.error('Failed to persist conversations (storage quota?)', e);
+    console.error("Failed to persist conversations (storage quota?)", e);
   }
 }
 

@@ -60,7 +60,7 @@ export interface CouncilPlan {
 /** Lanes whose members are tool-capable enough to run a research loop. FAST and
  *  SIMPLE entries are excluded: they are small models on tight token ceilings,
  *  and two of them were seated by hand in the run that failed. */
-const RESEARCH_LANES = ['AGENTIC', 'HARD', 'LONGCTX'];
+const RESEARCH_LANES = ["AGENTIC", "HARD", "LONGCTX"];
 
 /**
  * Lanes whose membership disqualifies a model regardless of where else it
@@ -70,19 +70,25 @@ const RESEARCH_LANES = ['AGENTIC', 'HARD', 'LONGCTX'];
  * LONGCTX seated a FAST model on the council, which is the exact mistake the
  * planner exists to prevent.
  */
-const SMALL_MODEL_LANES = ['FAST', 'SIMPLE'];
+const SMALL_MODEL_LANES = ["FAST", "SIMPLE"];
 
-const SEAT_NAMES = ['Analyst A', 'Analyst B', 'Analyst C', 'Analyst D', 'Analyst E'];
+const SEAT_NAMES = [
+  "Analyst A",
+  "Analyst B",
+  "Analyst C",
+  "Analyst D",
+  "Analyst E",
+];
 
 function providerOf(entry: string): string {
-  return entry.split('/')[0] ?? entry;
+  return entry.split("/")[0] ?? entry;
 }
 
 /** Median latency per entry from the gateway's own recent successful routes. */
-function latencyIndex(routes: StatusSnapshot['routes']): Map<string, number> {
+function latencyIndex(routes: StatusSnapshot["routes"]): Map<string, number> {
   const byEntry = new Map<string, number[]>();
   for (const r of routes ?? []) {
-    if (!r.ok || typeof r.ms !== 'number') continue;
+    if (!r.ok || typeof r.ms !== "number") continue;
     const list = byEntry.get(r.entry) ?? [];
     list.push(r.ms);
     byEntry.set(r.entry, list);
@@ -112,7 +118,10 @@ interface Candidate {
  * capacity right now, seating four models from one of them would be worse than
  * seating two. A smaller council that answers beats a larger one that starves.
  */
-export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPlan {
+export function planCouncil(
+  status: StatusSnapshot,
+  desiredSeats = 3,
+): CouncilPlan {
   const notes: string[] = [];
   const disabled = new Set(status.disabled_models ?? []);
   const cooling = new Set(Object.keys(status.cooldowns ?? {}));
@@ -179,9 +188,20 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
     if (samples < 3) score -= 8;
 
     const bits: string[] = [];
-    bits.push(samples >= 3 ? `${rate}% over ${samples}` : 'no track record yet');
-    if (medianMs !== undefined) bits.push(`${(medianMs / 1000).toFixed(1)}s median`);
-    candidates.push({ entry, provider, rate, samples, medianMs, score, why: bits.join(' · ') });
+    bits.push(
+      samples >= 3 ? `${rate}% over ${samples}` : "no track record yet",
+    );
+    if (medianMs !== undefined)
+      bits.push(`${(medianMs / 1000).toFixed(1)}s median`);
+    candidates.push({
+      entry,
+      provider,
+      rate,
+      samples,
+      medianMs,
+      score,
+      why: bits.join(" · "),
+    });
   }
 
   candidates.sort((a, b) => b.score - a.score);
@@ -205,12 +225,22 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
     // Nothing healthy: fall back to lane routing and let the gateway decide,
     // rather than refusing to convene at all.
     notes.push(
-      'No model currently has healthy capacity — falling back to automatic lane routing. ' +
-        'Expect failures until quotas or cooldowns recover.',
+      "No model currently has healthy capacity — falling back to automatic lane routing. " +
+        "Expect failures until quotas or cooldowns recover.",
     );
     return {
-      seats: [{ model: 'kompass-agentic', label: 'Analyst A', why: 'fallback: lane routing' }],
-      judge: { model: 'kompass-hard', label: 'Judge', why: 'fallback: lane routing' },
+      seats: [
+        {
+          model: "kompass-agentic",
+          label: "Analyst A",
+          why: "fallback: lane routing",
+        },
+      ],
+      judge: {
+        model: "kompass-hard",
+        label: "Judge",
+        why: "fallback: lane routing",
+      },
       alternates: [],
       notes,
     };
@@ -219,39 +249,46 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
   if (seats.length < desiredSeats) {
     notes.push(
       `Seated ${seats.length} of ${desiredSeats} requested: only ${usedProviders.size} provider${
-        usedProviders.size === 1 ? '' : 's'
+        usedProviders.size === 1 ? "" : "s"
       } has healthy capacity right now. A smaller council that answers beats a larger one that starves.`,
     );
   }
   if (skippedCooling > 0) {
-    notes.push(`${skippedCooling} model${skippedCooling === 1 ? '' : 's'} skipped — cooling down.`);
+    notes.push(
+      `${skippedCooling} model${skippedCooling === 1 ? "" : "s"} skipped — cooling down.`,
+    );
   }
   if (skippedQuota > 0) {
     notes.push(`${skippedQuota} skipped — provider quota spent for now.`);
   }
   if (skippedVision > 0) {
-    notes.push(`${skippedVision} skipped — vision-fallback models, which research poorly.`);
+    notes.push(
+      `${skippedVision} skipped — vision-fallback models, which research poorly.`,
+    );
   }
 
   // Judge: the strongest remaining model, ideally NOT one of the seats so it
   // reads the debate rather than re-reading its own answer. Falls back to the
   // best seat's model if nothing else is healthy.
   const judgeCandidate =
-    candidates.find((c) => !seats.some((s) => s.model === c.entry)) ?? candidates[0];
+    candidates.find((c) => !seats.some((s) => s.model === c.entry)) ??
+    candidates[0];
   const judge: PlannedSeat = judgeCandidate
     ? {
         model: judgeCandidate.entry,
-        label: 'Judge',
+        label: "Judge",
         why: `${judgeCandidate.why}${
           seats.some((s) => s.model === judgeCandidate.entry)
-            ? ' · also seated (no independent model available)'
-            : ' · independent of the seats'
+            ? " · also seated (no independent model available)"
+            : " · independent of the seats"
         }`,
       }
-    : { model: 'kompass-hard', label: 'Judge', why: 'fallback: lane routing' };
+    : { model: "kompass-hard", label: "Judge", why: "fallback: lane routing" };
 
   const claimed = new Set([...seats.map((x) => x.model), judge.model]);
-  const alternates = candidates.map((c) => c.entry).filter((e) => !claimed.has(e));
+  const alternates = candidates
+    .map((c) => c.entry)
+    .filter((e) => !claimed.has(e));
 
   return { seats, judge, alternates, notes };
 }

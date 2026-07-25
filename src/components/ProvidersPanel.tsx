@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // Provider key management, from the chat app, with nothing installed.
 //
@@ -9,8 +9,15 @@
 // Nothing here ever displays a key. The list shows the masked form the Worker
 // returns, and the input is cleared the moment a key is saved — so a key exists
 // in the page for exactly as long as it takes to send it.
-import { useCallback, useEffect, useState } from 'react';
-import { Check, ExternalLink, Loader2, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { useCallback, useEffect, useState } from "react";
+import {
+  Check,
+  ExternalLink,
+  Loader2,
+  Plus,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import {
   deleteVaultKey,
   listProviders,
@@ -18,28 +25,40 @@ import {
   putVaultKey,
   type ProviderInfo,
   type VaultStatus,
-} from '@/lib/kompassClient';
-import type { KompassSettings } from '@/lib/types';
+} from "@/lib/kompassClient";
+import type { KompassSettings } from "@/lib/types";
 
 /** Where to get a key, per provider. Signup URLs only — no key material. */
 const SIGNUP: Record<string, { url: string; note: string }> = {
-  openrouter: { url: 'https://openrouter.ai/keys', note: 'free tier, no card' },
-  nvidia: { url: 'https://build.nvidia.com', note: 'free tier, no card' },
-  google: { url: 'https://aistudio.google.com/apikey', note: 'free tier' },
-  groq: { url: 'https://console.groq.com/keys', note: 'free tier, very fast' },
-  mistral: { url: 'https://console.mistral.ai', note: 'free tier — trains on inputs' },
-  github: { url: 'https://github.com/settings/personal-access-tokens', note: '"Models: read"' },
-  sambanova: { url: 'https://cloud.sambanova.ai', note: 'free tier, no card' },
-  cohere: { url: 'https://dashboard.cohere.com/api-keys', note: 'trial key' },
-  hf: { url: 'https://huggingface.co/settings/tokens', note: 'Inference Providers permission' },
-  cfai: { url: 'https://dash.cloudflare.com/profile/api-tokens', note: 'images + embeddings' },
+  openrouter: { url: "https://openrouter.ai/keys", note: "free tier, no card" },
+  nvidia: { url: "https://build.nvidia.com", note: "free tier, no card" },
+  google: { url: "https://aistudio.google.com/apikey", note: "free tier" },
+  groq: { url: "https://console.groq.com/keys", note: "free tier, very fast" },
+  mistral: {
+    url: "https://console.mistral.ai",
+    note: "free tier — trains on inputs",
+  },
+  github: {
+    url: "https://github.com/settings/personal-access-tokens",
+    note: '"Models: read"',
+  },
+  sambanova: { url: "https://cloud.sambanova.ai", note: "free tier, no card" },
+  cohere: { url: "https://dashboard.cohere.com/api-keys", note: "trial key" },
+  hf: {
+    url: "https://huggingface.co/settings/tokens",
+    note: "Inference Providers permission",
+  },
+  cfai: {
+    url: "https://dash.cloudflare.com/profile/api-tokens",
+    note: "images + embeddings",
+  },
 };
 
 export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [adding, setAdding] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +66,10 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [v, p] = await Promise.all([listVaultKeys(settings), listProviders(settings)]);
+      const [v, p] = await Promise.all([
+        listVaultKeys(settings),
+        listProviders(settings),
+      ]);
       setStatus(v);
       setProviders(p);
       setError(null);
@@ -71,7 +93,7 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
       await putVaultKey(settings, provider, key);
       // Cleared immediately: the key should live in this page for no longer
       // than it takes to send it.
-      setDraft('');
+      setDraft("");
       setAdding(null);
       await refresh();
     } catch (e) {
@@ -106,8 +128,9 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
       <div>
         <h3 className="text-sm font-medium text-ink">Model providers</h3>
         <p className="mt-1 text-[0.78rem] leading-relaxed text-ink-muted">
-          Your gateway already answers using Cloudflare Workers AI on your own account, with no
-          signup. Add providers below only when you want more capacity or stronger models.
+          Your gateway already answers using Cloudflare Workers AI on your own
+          account, with no signup. Add providers below only when you want more
+          capacity or stronger models.
         </p>
       </div>
 
@@ -121,18 +144,21 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
       {status && !status.vault_enabled && (
         <div className="space-y-1.5 rounded-lg bg-warn-soft px-3 py-2.5 text-[0.78rem] text-warn">
           <p className="font-medium">
-            Saving keys from this page is off: <span className="font-mono">KOMPASS_MASTER_KEY</span>{' '}
-            is not set on your Worker.
+            Saving keys from this page is off:{" "}
+            <span className="font-mono">KOMPASS_MASTER_KEY</span> is not set on
+            your Worker.
           </p>
           <p className="leading-relaxed">
-            You can still add providers — set each one directly as a Worker secret using the name
-            shown below. In the Cloudflare dashboard: <b>Workers &amp; Pages</b> → your worker →{' '}
-            <b>Settings</b> → <b>Variables and Secrets</b> → <b>Add</b> → type <b>Secret</b>. They
+            You can still add providers — set each one directly as a Worker
+            secret using the name shown below. In the Cloudflare dashboard:{" "}
+            <b>Workers &amp; Pages</b> → your worker → <b>Settings</b> →{" "}
+            <b>Variables and Secrets</b> → <b>Add</b> → type <b>Secret</b>. They
             take effect immediately, no redeploy.
           </p>
           <p className="leading-relaxed">
-            To save keys from here instead, add a{' '}
-            <span className="font-mono">KOMPASS_MASTER_KEY</span> secret the same way and reload.
+            To save keys from here instead, add a{" "}
+            <span className="font-mono">KOMPASS_MASTER_KEY</span> secret the
+            same way and reload.
           </p>
         </div>
       )}
@@ -144,30 +170,36 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
           // The binding-backed provider authenticates as the account the Worker
           // runs on, so it has no key to configure. Showing it as "not
           // configured" was wrong — it is the one that already works.
-          const keyless = p.kind === 'workers-ai';
+          const keyless = p.kind === "workers-ai";
           const configured = keyless || stored || p.hasEnvKey;
           return (
             <li key={p.name} className="px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-mono text-[0.82rem] text-ink">{p.name}</span>
+                <span className="font-mono text-[0.82rem] text-ink">
+                  {p.name}
+                </span>
 
                 {configured ? (
                   <span className="flex items-center gap-1 text-[0.72rem] text-ok">
                     <Check className="h-3 w-3" />
                     {keyless
-                      ? 'active — no key needed'
+                      ? "active — no key needed"
                       : p.hasEnvKey
-                        ? 'set as Worker secret'
+                        ? "set as Worker secret"
                         : stored!.masked}
                   </span>
                 ) : (
-                  <span className="text-[0.72rem] text-ink-faint">not configured</span>
+                  <span className="text-[0.72rem] text-ink-faint">
+                    not configured
+                  </span>
                 )}
 
                 <span className="ml-auto flex items-center gap-2">
                   {p.keyEnv && !configured && !status?.vault_enabled && (
                     <button
-                      onClick={() => void navigator.clipboard.writeText(p.keyEnv!)}
+                      onClick={() =>
+                        void navigator.clipboard.writeText(p.keyEnv!)
+                      }
                       title="Copy the Worker secret name to set in the Cloudflare dashboard"
                       className="rounded-md border border-line px-2 py-0.5 font-mono text-[0.68rem] text-ink-secondary transition hover:bg-surface-hover hover:text-ink"
                     >
@@ -201,24 +233,26 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
                     <button
                       onClick={() => {
                         setAdding(adding === p.name ? null : p.name);
-                        setDraft('');
+                        setDraft("");
                       }}
                       className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.72rem] text-ink-secondary transition hover:bg-surface-hover hover:text-ink"
                     >
                       <Plus className="h-3 w-3" />
-                      {stored ? 'replace' : 'add'}
+                      {stored ? "replace" : "add"}
                     </button>
                   )}
                 </span>
               </div>
 
               {signup && !configured && (
-                <p className="mt-0.5 text-[0.7rem] text-ink-faint">{signup.note}</p>
+                <p className="mt-0.5 text-[0.7rem] text-ink-faint">
+                  {signup.note}
+                </p>
               )}
               {keyless && (
                 <p className="mt-0.5 text-[0.7rem] text-ink-faint">
-                  Cloudflare Workers AI, on your own account — this is what answers before you add
-                  anything.
+                  Cloudflare Workers AI, on your own account — this is what
+                  answers before you add anything.
                 </p>
               )}
 
@@ -230,8 +264,8 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') void save(p.name);
-                      if (e.key === 'Escape') setAdding(null);
+                      if (e.key === "Enter") void save(p.name);
+                      if (e.key === "Escape") setAdding(null);
                     }}
                     placeholder={`Paste your ${p.name} API key`}
                     className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-1.5 font-mono text-[0.78rem] text-ink outline-none focus:border-line-strong"
@@ -241,7 +275,7 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
                     disabled={busy || !draft.trim()}
                     className="rounded-lg bg-accent px-3 py-1.5 text-[0.78rem] font-medium text-accent-contrast transition hover:bg-accent-hover disabled:opacity-40"
                   >
-                    {busy ? 'Saving…' : 'Save'}
+                    {busy ? "Saving…" : "Save"}
                   </button>
                 </div>
               )}
@@ -251,9 +285,9 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
       </ul>
 
       <p className="text-[0.7rem] leading-relaxed text-ink-faint">
-        Keys go straight from this page to your own Worker and are stored encrypted (AES-GCM) in
-        your own Cloudflare KV. They never reach this app&rsquo;s server, and no screen here ever
-        shows a key back to you.
+        Keys go straight from this page to your own Worker and are stored
+        encrypted (AES-GCM) in your own Cloudflare KV. They never reach this
+        app&rsquo;s server, and no screen here ever shows a key back to you.
       </p>
     </div>
   );

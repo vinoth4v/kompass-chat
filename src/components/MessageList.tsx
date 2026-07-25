@@ -1,24 +1,29 @@
-'use client';
-import { Image as ImageIcon, MessageSquare, Telescope, Users } from 'lucide-react';
-import { useEffect, useRef } from 'react';
-import type { ChatMessage, ConversationMode } from '@/lib/types';
-import { MessageBubble } from './MessageBubble';
+"use client";
+import {
+  Image as ImageIcon,
+  MessageSquare,
+  Telescope,
+  Users,
+} from "lucide-react";
+import { useEffect, useRef } from "react";
+import type { ChatMessage, ConversationMode } from "@/lib/types";
+import { MessageBubble } from "./MessageBubble";
 
 const EXAMPLES: Record<ConversationMode, string[]> = {
   chat: [
-    'Explain how Kompass’s lane routing works',
-    'Write a Python function to dedupe a list, preserving order',
-    'What’s a good name for a compass-themed color palette?',
+    "Explain how Kompass’s lane routing works",
+    "Write a Python function to dedupe a list, preserving order",
+    "What’s a good name for a compass-themed color palette?",
   ],
   image: [
-    'A minimalist compass logo, flat design, blue gradient',
-    'Cozy reading nook, warm light, watercolor style',
-    'Isometric illustration of a cloud server rack',
+    "A minimalist compass logo, flat design, blue gradient",
+    "Cozy reading nook, warm light, watercolor style",
+    "Isometric illustration of a cloud server rack",
   ],
   research: [
-    'What are the latest developments in free-tier LLM APIs?',
-    'Compare three open-weight coding models released this year',
-    'Summarize best practices for LLM gateway rate limiting',
+    "What are the latest developments in free-tier LLM APIs?",
+    "Compare three open-weight coding models released this year",
+    "Summarize best practices for LLM gateway rate limiting",
   ],
   // Council has its own surface (CouncilView) and never renders MessageList,
   // but the Record must stay exhaustive over ConversationMode.
@@ -54,7 +59,7 @@ export function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, busy]);
 
   if (messages.length === 0) {
@@ -65,8 +70,12 @@ export function MessageList({
           <Icon size={26} strokeWidth={1.75} />
         </div>
         <div className="space-y-1.5">
-          <h2 className="text-xl font-medium tracking-tight text-ink">What can I help you with?</h2>
-          <p className="text-sm text-ink-muted">Pick a starting point, or just start typing.</p>
+          <h2 className="text-xl font-medium tracking-tight text-ink">
+            What can I help you with?
+          </h2>
+          <p className="text-sm text-ink-muted">
+            Pick a starting point, or just start typing.
+          </p>
         </div>
         <div className="flex max-w-xl flex-wrap justify-center gap-2">
           {EXAMPLES[mode].map((ex) => (
@@ -83,9 +92,13 @@ export function MessageList({
     );
   }
 
-  const lastAssistantIdx = [...messages].reverse().findIndex((m) => m.role === 'assistant');
+  const lastAssistantIdx = [...messages]
+    .reverse()
+    .findIndex((m) => m.role === "assistant");
   const lastAssistantId =
-    lastAssistantIdx >= 0 ? messages[messages.length - 1 - lastAssistantIdx]!.id : null;
+    lastAssistantIdx >= 0
+      ? messages[messages.length - 1 - lastAssistantIdx]!.id
+      : null;
 
   return (
     <div className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
@@ -96,7 +109,7 @@ export function MessageList({
             message={m}
             isLast={m.id === lastAssistantId}
             onRegenerate={m.id === lastAssistantId ? onRegenerate : undefined}
-            onEdit={m.role === 'user' ? (t) => onEdit(m.id, t) : undefined}
+            onEdit={m.role === "user" ? (t) => onEdit(m.id, t) : undefined}
             onDelete={() => onDelete(m.id)}
           />
         ))}
@@ -104,7 +117,13 @@ export function MessageList({
           // Only the newest reply offers follow-ups: older ones are history, and
           // chips under every message turn the thread into a wall of buttons.
           const last = messages[messages.length - 1];
-          if (busy || !last || last.role !== 'assistant' || !last.followups?.length) return null;
+          if (
+            busy ||
+            !last ||
+            last.role !== "assistant" ||
+            !last.followups?.length
+          )
+            return null;
           return (
             <div className="kompass-fade-in flex flex-wrap gap-2 pt-1">
               {last.followups.map((q) => (
@@ -120,7 +139,10 @@ export function MessageList({
           );
         })()}
         {busy && (
-          <div className="kompass-thinking flex items-center text-ink-muted" aria-label="Thinking">
+          <div
+            className="kompass-thinking flex items-center text-ink-muted"
+            aria-label="Thinking"
+          >
             <span />
             <span />
             <span />
