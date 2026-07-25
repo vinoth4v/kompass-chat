@@ -80,10 +80,13 @@ interface FetchResultJson {
 export async function runResearch(
   settings: KompassSettings,
   lane: string,
-  question: string,
+  /** Full conversation, so attached files travel with the question. Previously
+   *  this took the question TEXT only, which silently discarded every
+   *  attachment before the request was built. */
+  conversation: AnthropicMessageWire[],
   signal?: AbortSignal,
 ): Promise<ResearchResult> {
-  const history: AnthropicMessageWire[] = [{ role: "user", content: question }];
+  const history: AnthropicMessageWire[] = [...conversation];
   const sources: { title: string; url: string }[] = [];
   const seenUrls = new Set<string>();
   let totalIn = 0;

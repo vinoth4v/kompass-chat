@@ -40,7 +40,18 @@ async function fileToAttachment(file: File): Promise<Attachment> {
       !TEXT_EXTENSIONS.test(file.name) &&
       file.type !== ""
     ) {
-      throw new Error(`unsupported file type: ${file.type || file.name}`);
+      // Office formats are ZIP containers of XML, not text. Reading them in
+      // the browser would need a parser per format; saying so beats a silent
+      // failure or a wall of mojibake pasted into the conversation.
+      if (/\.(docx?|odt|rtf|xlsx?|pptx?|pages|numbers|key)$/i.test(file.name)) {
+        throw new Error(
+          `${file.name}: Word/Excel/PowerPoint files can't be read directly — ` +
+            `export as PDF, or copy the text in.`,
+        );
+      }
+      throw new Error(
+        `${file.name}: unsupported file type (${file.type || "unknown"})`,
+      );
     }
     const text = await file.text();
     return {
@@ -189,7 +200,13 @@ export function Composer({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,application/pdf"
+                // Broad on purpose: the picker previously offered only images
+                // and PDFs, so every text file — markdown, code, CSV, logs —
+                // was unselectable even though the code handled it. Office
+                // formats are listed so the picker shows them and the error
+                // explains why they cannot be read, rather than greying them
+                // out with no explanation.
+                accept="image/*,application/pdf,text/*,.md,.markdown,.txt,.csv,.tsv,.json,.jsonl,.ndjson,.yaml,.yml,.toml,.ini,.cfg,.conf,.log,.xml,.svg,.html,.htm,.css,.scss,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cs,.php,.sh,.bash,.zsh,.sql,.graphql,.env,.dockerfile,.makefile,.doc,.docx,.odt,.rtf,.xls,.xlsx,.ppt,.pptx"
                 multiple
                 hidden
                 onChange={(e) => void handleFiles(e.target.files)}

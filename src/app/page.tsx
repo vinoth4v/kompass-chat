@@ -212,10 +212,13 @@ export default function Page() {
           createdAt: Date.now(),
         });
       } else if (mode === "research") {
+        // Full wire history, not just the question text: research and council
+        // were dropping attachments entirely, so a file uploaded in either mode
+        // never reached the model and it answered as if nothing had been sent.
         const result = await runResearch(
           settings,
           lane,
-          lastUser?.text ?? "",
+          toWireMessages(messages),
           controller.signal,
         );
         appendAssistant(conversationId, {
