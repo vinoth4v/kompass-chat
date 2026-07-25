@@ -91,6 +91,62 @@ export const TOOLS: AnthropicToolWire[] = [
     },
   },
   {
+    name: "create_document",
+    description:
+      "Produce a downloadable PDF, Word (docx), PowerPoint (pptx) or Excel (xlsx) file. Use this " +
+      "whenever the user asks for a document, report, deck, spreadsheet or anything to download. " +
+      "Supply STRUCTURE, not formatting: headings, paragraphs, bullets and tables. Layout, " +
+      "typography and colour are applied for you, so do not attempt markdown or styling inside " +
+      "the text. Prefer tables for anything tabular, especially for xlsx where each table becomes " +
+      "its own sheet. Write the real content — a document containing placeholders is worthless.",
+    input_schema: {
+      type: "object",
+      properties: {
+        format: {
+          type: "string",
+          enum: ["pdf", "docx", "pptx", "xlsx"],
+          description:
+            "pdf/docx for reports, pptx for slide decks, xlsx for tabular data",
+        },
+        title: { type: "string", description: "Document title" },
+        subtitle: {
+          type: "string",
+          description: "Optional one-line subtitle or date",
+        },
+        sections: {
+          type: "array",
+          description:
+            "Ordered content. For pptx each section becomes one slide, for xlsx each section " +
+            "with a table becomes one sheet.",
+          items: {
+            type: "object",
+            properties: {
+              heading: { type: "string" },
+              paragraphs: { type: "array", items: { type: "string" } },
+              bullets: { type: "array", items: { type: "string" } },
+              table: {
+                type: "object",
+                properties: {
+                  headers: { type: "array", items: { type: "string" } },
+                  rows: {
+                    type: "array",
+                    items: { type: "array", items: { type: "string" } },
+                  },
+                },
+                required: ["headers", "rows"],
+              },
+              notes: {
+                type: "string",
+                description: "Speaker notes (pptx only)",
+              },
+            },
+          },
+        },
+      },
+      required: ["format", "title", "sections"],
+    },
+  },
+  {
     name: "get_reference",
     description:
       "Look something up in an authoritative register. Use instead of web_search when the " +
@@ -129,7 +185,19 @@ export const TOOLS: AnthropicToolWire[] = [
 ];
 
 /** Hooks so the Council can drive its live agent cards from the same executor. */
+/** A file produced by create_document, surfaced to the UI for download. */
+export interface GeneratedDocument {
+  filename: string;
+  mime: string;
+  /** Object URL — created in the browser, never uploaded anywhere. */
+  url: string;
+  format: string;
+  bytes: number;
+}
+
 export interface ToolHooks {
+  /** Fired when create_document produces a file. */
+  onDocument?: (doc: GeneratedDocument) => void;
   onSearch?: (query: string) => void;
   onFetch?: (url: string) => void;
   onData?: (kind: string, query: string) => void;

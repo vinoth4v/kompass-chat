@@ -84,6 +84,14 @@ export interface ChatMessage {
   sources?: { title: string; url: string }[];
   /** Suggested next questions, parsed out of the reply (see research.ts). */
   followups?: string[];
+  /** Files produced by create_document, offered as downloads. */
+  documents?: {
+    filename: string;
+    mime: string;
+    url: string;
+    format: string;
+    bytes: number;
+  }[];
 }
 
 export type ConversationMode = "chat" | "image" | "research" | "council";

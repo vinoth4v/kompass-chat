@@ -2,6 +2,7 @@
 import {
   Check,
   Copy,
+  Cpu,
   Download,
   Paperclip,
   Pencil,
@@ -192,6 +193,33 @@ export function MessageBubble({
               </div>
             )}
 
+            {message.documents && message.documents.length > 0 && (
+              <div className="mt-3 flex flex-col gap-1.5">
+                {message.documents.map((d) => (
+                  <a
+                    key={d.url}
+                    href={d.url}
+                    download={d.filename}
+                    className="flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-2.5 transition hover:border-line-strong hover:bg-surface-hover"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-[0.62rem] font-semibold uppercase text-accent">
+                      {d.format}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[0.85rem] font-medium text-ink">
+                        {d.filename}
+                      </span>
+                      <span className="block text-[0.72rem] text-ink-muted">
+                        {Math.max(1, Math.round(d.bytes / 1024))} KB · click to
+                        download
+                      </span>
+                    </span>
+                    <Download size={15} className="shrink-0 text-ink-muted" />
+                  </a>
+                ))}
+              </div>
+            )}
+
             {message.sources && message.sources.length > 0 && (
               <div className="mt-3 border-t border-line pt-3">
                 <div className="mb-1.5 text-[0.7em] font-semibold uppercase tracking-[0.08em] text-ink-muted">
@@ -215,6 +243,39 @@ export function MessageBubble({
             )}
           </div>
         )}
+
+        {/* Always-visible provenance: which model answered, and how many
+            sources it actually read. Previously this only appeared on hover,
+            which meant the honest part of the answer was the hidden part. */}
+        {!isUser &&
+          !message.error &&
+          (message.servedBy || message.sources?.length) && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.72rem] text-ink-muted">
+              {message.servedBy && (
+                <span className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-0.5">
+                  <Cpu size={11} className="text-ink-faint" />
+                  <span className="font-mono">{message.servedBy}</span>
+                </span>
+              )}
+              {message.lane && (
+                <span className="rounded-full border border-line px-2 py-0.5 uppercase tracking-wide">
+                  {message.lane}
+                </span>
+              )}
+              {!!message.sources?.length && (
+                <span>
+                  {message.sources.length} source
+                  {message.sources.length === 1 ? "" : "s"} read
+                </span>
+              )}
+              {message.usage && (
+                <span className="text-ink-faint">
+                  {fmtTokens(message.usage.input)}→
+                  {fmtTokens(message.usage.output)} tok
+                </span>
+              )}
+            </div>
+          )}
 
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
           {!isUser && !!message.text && (

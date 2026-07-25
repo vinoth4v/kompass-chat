@@ -12,7 +12,7 @@ import {
   type AnthropicToolUseBlockWire,
 } from "./kompassClient";
 import type { KompassSettings } from "./types";
-import { TOOLS, executeTool } from "./tools";
+import { TOOLS, executeTool, type GeneratedDocument } from "./tools";
 
 /**
  * Asked for in the same call rather than a second request: an extra round trip
@@ -60,6 +60,8 @@ const MAX_ITERATIONS = 6;
 
 export interface ResearchResult {
   text: string;
+  /** Files create_document produced during this turn. */
+  documents?: GeneratedDocument[];
   /** Suggested next questions, stripped out of the reply text. */
   followups?: string[];
   sources: { title: string; url: string }[];
@@ -88,6 +90,7 @@ export async function runResearch(
 ): Promise<ResearchResult> {
   const history: AnthropicMessageWire[] = [...conversation];
   const sources: { title: string; url: string }[] = [];
+  const documents: GeneratedDocument[] = [];
   const seenUrls = new Set<string>();
   let totalIn = 0;
   let totalOut = 0;
@@ -125,6 +128,7 @@ export async function runResearch(
         .join("\n\n");
       return {
         text: text || "(no answer)",
+        documents: documents.length ? documents : undefined,
         sources,
         usage: { input: totalIn, output: totalOut },
         servedBy,
@@ -135,7 +139,15 @@ export async function runResearch(
     history.push({ role: "assistant", content: response.content });
     const toolResults: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
-      toolResults.push(await executeTool(call, sources, seenUrls, {}, signal));
+      toolResults.push(
+        await executeTool(
+          call,
+          sources,
+          seenUrls,
+          { onDocument: (d) => documents.push(d) },
+          signal,
+        ),
+      );
     }
     history.push({ role: "user", content: toolResults });
   }
@@ -159,6 +171,9 @@ const CHAT_SYSTEM_PROMPT =
   "depends on facts you cannot be confident about from memory: current events, releases, " +
   'versions, prices, people, "latest"/"best" questions, anything dated, or anything where being ' +
   "out of date would mislead. When you do, cite what you read.\n\n" +
+  "When the user asks for a document, report, deck or spreadsheet — anything they would " +
+  "download — call create_document. Supply real content, never placeholders, and let the tool " +
+  "handle formatting.\n\n" +
   "Do NOT search for things you already know or that do not depend on current facts — writing " +
   "code, explaining a concept, editing text, reasoning about something the user gave you. " +
   "Searching those wastes the user's time.\n\n" +
@@ -182,6 +197,7 @@ export async function runChatWithTools(
 ): Promise<ResearchResult> {
   const messages = [...history];
   const sources: { title: string; url: string }[] = [];
+  const documents: GeneratedDocument[] = [];
   const seenUrls = new Set<string>();
   let totalIn = 0;
   let totalOut = 0;
@@ -224,6 +240,7 @@ export async function runChatWithTools(
       return {
         text: text || "(empty response)",
         followups,
+        documents: documents.length ? documents : undefined,
         sources,
         usage: { input: totalIn, output: totalOut },
         servedBy,
@@ -234,7 +251,15 @@ export async function runChatWithTools(
     messages.push({ role: "assistant", content: response.content });
     const toolResults: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
-      toolResults.push(await executeTool(call, sources, seenUrls, {}, signal));
+      toolResults.push(
+        await executeTool(
+          call,
+          sources,
+          seenUrls,
+          { onDocument: (d) => documents.push(d) },
+          signal,
+        ),
+      );
     }
     messages.push({ role: "user", content: toolResults });
   }
