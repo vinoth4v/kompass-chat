@@ -6,8 +6,6 @@
 // a partial council is the normal case, and a user judging an answer deserves to
 // know it came from two seats rather than four.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
   ChevronDown,
@@ -25,6 +23,7 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import { Markdown } from "./Markdown";
 import {
   healVerdict,
   runCouncil,
@@ -206,9 +205,7 @@ function AgentCard({ agent }: { agent: AgentState }) {
       {open && agent.answer && (
         <div className="mt-2 border-t border-line pt-2">
           <div className="kompass-prose max-h-72 overflow-y-auto text-[13px] text-ink-secondary">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {agent.answer}
-            </ReactMarkdown>
+            <Markdown>{agent.answer}</Markdown>
           </div>
           {agent.sources.length > 0 && (
             <ul className="mt-2 space-y-1">
@@ -786,9 +783,7 @@ export function CouncilView({
                     Final answer
                   </h3>
                   <div className="kompass-prose text-[14px] text-ink">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {verdict.answer}
-                    </ReactMarkdown>
+                    <Markdown>{verdict.answer}</Markdown>
                   </div>
                 </div>
 

@@ -43,19 +43,60 @@ export function extractFollowups(text: string): {
   // Deliberately loose. Models wrap the marker in bold, prefix it with a
   // bullet or a horizontal rule, and occasionally spell it "Follow-ups". A
   // marker that leaks into the visible answer is worse than no chips at all.
-  const m = /^[ \t>*_-]*\**\s*follow[\s-]?ups?\**\s*:\s*\**[ \t]*(.+)$/im.exec(
-    text,
-  );
+  //
+  // Two shapes, because models produce both:
+  //   FOLLOWUPS: one | two | three          — the format that was asked for
+  //   **FOLLOW-UPS**\n- one\n- two          — a heading and a list
+  // The second leaked verbatim into a maths answer, marker and all. The hyphen
+  // class is not just "-": that reply used U+2011, and a model that has just
+  // typeset an equation is exactly the one to reach for a typographic dash.
+  // Every gap is [ \t], never \s: \s matches newlines, so the marker regex ate
+  // the first list item as though it sat on the heading's own line, and the
+  // heading form silently degraded to one follow-up with a mangled answer.
+  const marker =
+    /^[ \t>*_#-]*\**[ \t]*follow[ \t‐-―­-]?ups?\**[ \t]*:?[ \t]*\**[ \t]*(.*)$/im;
+  const m = marker.exec(text);
   if (!m) return { text };
-  const followups = (m[1] ?? "")
-    .split("|")
-    .map((q) => q.trim().replace(/^[-*\d.\s]+/, ""))
+
+  const sameLine = (m[1] ?? "").trim();
+  const after = text.slice(m.index + m[0].length);
+  // A heading with nothing after it on the line: the questions are the list
+  // that follows, up to the first line that is not a list item.
+  const listed: string[] = [];
+  if (!sameLine) {
+    for (const line of after.split("\n")) {
+      const item = /^[ \t]*(?:[-*+•]|\d+[.)])[ \t]+(.*\S)/.exec(line);
+      if (item) listed.push(item[1]!);
+      else if (line.trim()) break;
+    }
+  }
+
+  const raw = sameLine ? sameLine.split("|") : listed;
+  const followups = raw
+    .map((q) => q.trim().replace(/^[-*\d.\s]+/, "").replace(/\*\*/g, "").trim())
     .filter((q) => q.length > 3 && q.length < 160)
     .slice(0, 3);
-  const cleaned = (
-    text.slice(0, m.index) + text.slice(m.index + m[0].length)
-  ).trimEnd();
-  return { text: cleaned, followups: followups.length ? followups : undefined };
+  // Nothing usable after the marker — leave the text alone rather than
+  // deleting a line that turned out to be part of the answer.
+  if (followups.length === 0) return { text };
+
+  // Cut the marker AND, for the list form, the list it introduced.
+  let end = m.index + m[0].length;
+  if (!sameLine) {
+    let consumed = 0;
+    for (const line of after.split("\n")) {
+      const isItem = /^[ \t]*(?:[-*+•]|\d+[.)])[ \t]+\S/.test(line);
+      if (!isItem && line.trim()) break;
+      consumed += line.length + 1;
+      if (isItem && --listed.length === 0) break;
+    }
+    end += consumed;
+  }
+  const cleaned = (text.slice(0, m.index) + text.slice(end))
+    // The marker often sits under a "---" rule that now separates nothing.
+    .replace(/\n[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*\s*$/, "")
+    .trimEnd();
+  return { text: cleaned, followups };
 }
 
 /**

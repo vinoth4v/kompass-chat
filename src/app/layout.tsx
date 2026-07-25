@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+// KaTeX's own stylesheet. Without it rehype-katex emits correct markup that
+// renders as unstyled, overlapping spans — worse than the raw LaTeX it replaced.
+import "katex/dist/katex.min.css";
 
 // Self-hosted at build time by next/font — no CDN request, no layout shift, and
 // no dependency on a third party staying up. The default system stack was the

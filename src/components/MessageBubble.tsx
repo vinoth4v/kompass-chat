@@ -11,19 +11,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/types";
-import { CodeBlock } from "./CodeBlock";
-
-const markdownComponents = {
-  pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-  code: CodeBlock,
-  a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a {...props} target="_blank" rel="noopener noreferrer" />
-  ),
-};
+import { Markdown } from "./Markdown";
 
 function fmtTokens(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
@@ -200,13 +189,7 @@ export function MessageBubble({
               </p>
             ) : (
               <div className="prose-kompass max-w-none break-words text-[0.95em]">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeHighlight]}
-                  components={markdownComponents}
-                >
-                  {message.text || " "}
-                </ReactMarkdown>
+                <Markdown>{message.text || " "}</Markdown>
               </div>
             )}
 
