@@ -4,6 +4,7 @@
 // executed by this app's own Vercel serverless routes (/api/tools/*), since a
 // browser fetch to duckduckgo.com or an arbitrary site would hit CORS. No
 // bash/filesystem tools here — that's what the local `kompass ui` is for.
+import { recoverToolCalls } from "./recoverToolCall";
 import {
   sendMessage,
   type AnthropicMessageWire,
@@ -12,7 +13,7 @@ import {
   type AnthropicToolUseBlockWire,
 } from "./kompassClient";
 import type { KompassSettings } from "./types";
-import { TOOLS, executeTool, type GeneratedDocument } from "./tools";
+import { TOOL_NAMES, TOOLS, executeTool, type GeneratedDocument } from "./tools";
 
 /**
  * Asked for in the same call rather than a second request: an extra round trip
@@ -125,9 +126,28 @@ export async function runResearch(
     totalIn += response.usage.input_tokens;
     totalOut += response.usage.output_tokens;
 
-    const toolUses = response.content.filter(
+    let toolUses = response.content.filter(
       (b): b is AnthropicToolUseBlockWire => b.type === "tool_use",
     );
+
+    // Some open-weight models print the call instead of making it. Asked for a
+    // PDF, one emitted a complete create_document call as JSON prose — the user
+    // saw the JSON and got no document. Recover the intent rather than showing
+    // the plumbing. Only tools offered on this turn are eligible to run.
+    if (toolUses.length === 0) {
+      const textSoFar = response.content
+        .filter((b): b is AnthropicTextBlockWire => b.type === "text")
+        .map((b) => b.text)
+        .join("\n\n");
+      const recovered = recoverToolCalls(textSoFar, TOOL_NAMES);
+      if (recovered.calls.length > 0) {
+        toolUses = recovered.calls;
+        response.content = [
+          ...(recovered.text ? [{ type: "text" as const, text: recovered.text }] : []),
+          ...recovered.calls,
+        ];
+      }
+    }
     if (toolUses.length === 0) {
       const text = response.content
         .filter((b): b is AnthropicTextBlockWire => b.type === "text")
@@ -238,9 +258,28 @@ export async function runChatWithTools(
     totalIn += response.usage.input_tokens;
     totalOut += response.usage.output_tokens;
 
-    const toolUses = response.content.filter(
+    let toolUses = response.content.filter(
       (b): b is AnthropicToolUseBlockWire => b.type === "tool_use",
     );
+
+    // Some open-weight models print the call instead of making it. Asked for a
+    // PDF, one emitted a complete create_document call as JSON prose — the user
+    // saw the JSON and got no document. Recover the intent rather than showing
+    // the plumbing. Only tools offered on this turn are eligible to run.
+    if (toolUses.length === 0) {
+      const textSoFar = response.content
+        .filter((b): b is AnthropicTextBlockWire => b.type === "text")
+        .map((b) => b.text)
+        .join("\n\n");
+      const recovered = recoverToolCalls(textSoFar, TOOL_NAMES);
+      if (recovered.calls.length > 0) {
+        toolUses = recovered.calls;
+        response.content = [
+          ...(recovered.text ? [{ type: "text" as const, text: recovered.text }] : []),
+          ...recovered.calls,
+        ];
+      }
+    }
     if (toolUses.length === 0) {
       const raw = response.content
         .filter((b): b is AnthropicTextBlockWire => b.type === "text")
@@ -270,6 +309,26 @@ export async function runChatWithTools(
           signal,
         ),
       );
+    }
+    if (lastStep) {
+      // Tools were withheld this step, so a call here can only have come from
+      // recovery. Run it for its artifact, then answer with the text that came
+      // alongside — looping again would exceed the ceiling and drop the
+      // document the user actually asked for.
+      const raw = response.content
+        .filter((b): b is AnthropicTextBlockWire => b.type === "text")
+        .map((b) => b.text)
+        .join("\n\n");
+      const { text, followups } = extractFollowups(raw);
+      return {
+        text: text || "Here is the document you asked for.",
+        followups,
+        documents: documents.length ? documents : undefined,
+        sources,
+        usage: { input: totalIn, output: totalOut },
+        servedBy,
+        lane: servedLane,
+      };
     }
     messages.push({ role: "user", content: toolResults });
   }

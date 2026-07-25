@@ -326,3 +326,6 @@ export async function executeTool(
     return err(call, `${call.name} failed: ${String(e).slice(0, 200)}`);
   }
 }
+
+/** Names eligible for text-form recovery — see recoverToolCall.ts. */
+export const TOOL_NAMES: Set<string> = new Set(TOOLS.map((t) => t.name));

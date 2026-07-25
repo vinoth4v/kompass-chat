@@ -2,12 +2,13 @@
   "name": "kompass-chat",
   "version": "1.0.0",
   "private": true,
-  "description": "Kompass AI — a hosted chat app for your personal Kompass gateway (chat, vision, image generation, web research).",
+  "description": "Kompass AI \u2014 a hosted chat app for your personal Kompass gateway (chat, vision, image generation, web research).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint ."
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -32,7 +33,8 @@
     "eslint-config-next": "15.5.21",
     "postcss": "8.5.22",
     "tailwindcss": "3.4.13",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "postcss": "8.5.22",
