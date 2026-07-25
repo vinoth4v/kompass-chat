@@ -105,6 +105,23 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
+  /**
+   * A finished Council run, kept on the conversation rather than inside
+   * CouncilView. Switching mode unmounts that component, and React discards
+   * local state on unmount — so a run that lived there vanished the moment the
+   * user looked at Chat and came back. Stored here it also survives reload,
+   * like every other conversation.
+   *
+   * Typed loosely to keep types.ts free of a dependency on council.ts.
+   */
+  council?: CouncilSession;
+}
+
+/** A Council run plus the question that produced it. */
+export interface CouncilSession {
+  question: string;
+  run: unknown;
+  updatedAt: number;
 }
 
 export interface KompassSettings {

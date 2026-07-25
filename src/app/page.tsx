@@ -364,7 +364,17 @@ export default function Page() {
           // (agents, phases, verdict), not a message list, so it does not use
           // MessageList/Composer at all.
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <CouncilView settings={settings} />
+            <CouncilView
+              // Keyed by conversation so two council chats cannot bleed into
+              // each other, and the run is stored on the conversation rather
+              // than in component state that unmount throws away.
+              key={active.id}
+              settings={settings}
+              session={active.council}
+              onSession={(council) =>
+                updateConversation(active.id, (c) => ({ ...c, council }))
+              }
+            />
           </div>
         ) : active ? (
           <>

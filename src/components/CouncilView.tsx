@@ -41,7 +41,7 @@ import {
   type CouncilPlan,
   type StatusSnapshot,
 } from "@/lib/councilPlanner";
-import type { KompassSettings } from "@/lib/types";
+import type { CouncilSession, KompassSettings } from "@/lib/types";
 
 /** Lane pseudo-models always available, even before the roster loads. */
 const LANE_OPTIONS = [
@@ -230,7 +230,17 @@ function AgentCard({ agent }: { agent: AgentState }) {
   );
 }
 
-export function CouncilView({ settings }: { settings: KompassSettings }) {
+export function CouncilView({
+  settings,
+  session,
+  onSession,
+}: {
+  settings: KompassSettings;
+  /** Persisted run for this conversation, or undefined if none yet. */
+  session?: CouncilSession;
+  /** Lift the run up so it outlives this component being unmounted. */
+  onSession: (s: CouncilSession | undefined) => void;
+}) {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [agentCount, setAgentCount] = useState(3);
   const [agents, setAgents] = useState<AgentSpec[]>(() => defaultAgents(3, []));
@@ -241,11 +251,27 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
   const [auto, setAuto] = useState(true);
   const [plan, setPlan] = useState<CouncilPlan | null>(null);
   const [planning, setPlanning] = useState(false);
-  const [question, setQuestion] = useState("");
-  const [run, setRun] = useState<CouncilRun | null>(null);
+  // Seeded from the conversation so switching to Chat and back does not lose
+  // the run. Mount-time seeding is sufficient because page.tsx keys this
+  // component on the conversation id, so switching conversations remounts it.
+  const [question, setQuestion] = useState(session?.question ?? "");
+  const [run, setRun] = useState<CouncilRun | null>(
+    (session?.run as CouncilRun | undefined) ?? null,
+  );
   const [busy, setBusy] = useState(false);
-  const [configOpen, setConfigOpen] = useState(true);
+  // A finished run is the answer; the setup panel would push it off screen.
+  const [configOpen, setConfigOpen] = useState(!session?.run);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Persist every state change, not just the final verdict: a run that is
+  // still deliberating when the user switches away should come back mid-flight
+  // rather than as an empty panel.
+  const persist = useCallback(
+    (next: CouncilRun | null, q: string) => {
+      onSession(next ? { question: q, run: next, updatedAt: Date.now() } : undefined);
+    },
+    [onSession],
+  );
 
   const composePlan = useCallback(async () => {
     setPlanning(true);
@@ -333,7 +359,12 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
         judgeModel,
         alternates: plan?.alternates ?? [],
         depth,
-        onUpdate: setRun,
+        // Mirror every progress update into the conversation, so a run in
+        // flight survives the user switching modes mid-deliberation.
+        onUpdate: (r) => {
+          setRun(r);
+          persist(r, question);
+        },
         signal: controller.signal,
       });
     } catch {
