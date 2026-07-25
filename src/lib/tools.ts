@@ -12,6 +12,7 @@
 // Citation rule, unchanged and load-bearing: a source is recorded only when a
 // fetch or a data lookup actually SUCCEEDS. Nothing is ever cited because a
 // model said it read it.
+import type { DocFormat, DocSection } from "./documents";
 import type {
   AnthropicToolResultBlockWire,
   AnthropicToolUseBlockWire,
@@ -185,6 +186,9 @@ export const TOOLS: AnthropicToolWire[] = [
 ];
 
 /** Hooks so the Council can drive its live agent cards from the same executor. */
+/** Formats renderDocument can actually produce — gates model-supplied input. */
+const DOC_FORMATS = new Set<DocFormat>(["pdf", "docx", "pptx", "xlsx"]);
+
 /** A file produced by create_document, surfaced to the UI for download. */
 export interface GeneratedDocument {
   filename: string;
@@ -257,6 +261,45 @@ export async function executeTool(
         type: "tool_result",
         tool_use_id: call.id,
         content: summary || "no results",
+      };
+    }
+
+    if (call.name === "create_document") {
+      // create_document was declared in TOOLS but never implemented, so every
+      // model that correctly called it got "unknown tool" back and the user got
+      // no file — the whole document feature was advertised and dead.
+      const format = String(call.input.format ?? "pdf") as DocFormat;
+      if (!DOC_FORMATS.has(format)) {
+        return err(call, `unsupported format "${format}"`);
+      }
+      const sections = Array.isArray(call.input.sections) ? call.input.sections : [];
+      if (sections.length === 0) {
+        return err(call, "sections must be a non-empty array");
+      }
+      // Rendering happens in the browser: nothing is uploaded, and the object
+      // URL is handed straight to a download link.
+      const { renderDocument } = await import("./documents");
+      const rendered = await renderDocument({
+        format,
+        title: String(call.input.title ?? "Document"),
+        subtitle: call.input.subtitle ? String(call.input.subtitle) : undefined,
+        sections: sections as DocSection[],
+      });
+      hooks.onDocument?.({
+        filename: rendered.filename,
+        mime: rendered.blob.type,
+        url: URL.createObjectURL(rendered.blob),
+        format,
+        bytes: rendered.blob.size,
+      });
+      return {
+        type: "tool_result",
+        tool_use_id: call.id,
+        // The model must not then paste the document's contents into the chat.
+        content:
+          `Created ${rendered.filename} (${format}, ${rendered.blob.size} bytes). ` +
+          `It is already offered to the user as a download. Reply with one short ` +
+          `sentence confirming it — do not repeat the document's contents.`,
       };
     }
 

@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Download,
   ExternalLink,
   Gavel,
   Globe,
@@ -41,6 +42,7 @@ import {
   type CouncilPlan,
   type StatusSnapshot,
 } from "@/lib/councilPlanner";
+import type { DocFormat } from "@/lib/documents";
 import type { CouncilSession, KompassSettings } from "@/lib/types";
 
 /** Lane pseudo-models always available, even before the roster loads. */
@@ -376,6 +378,32 @@ export function CouncilView({
   }
 
   const verdict = run?.verdict;
+
+  // Export is offered for any run that reached a verdict, in all four formats —
+  // a council answer is usually something the user wants to keep or send on,
+  // and re-running it costs several models' worth of work.
+  const [exporting, setExporting] = useState<DocFormat | null>(null);
+  const exportRun = useCallback(
+    async (format: DocFormat) => {
+      if (!run) return;
+      setExporting(format);
+      try {
+        const { renderDocument } = await import("@/lib/documents");
+        const { councilToDocument } = await import("@/lib/councilDocument");
+        const doc = await renderDocument(councilToDocument(question, run, format));
+        const url = URL.createObjectURL(doc.blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = doc.filename;
+        a.click();
+        // Revoking immediately can cancel the download in some browsers.
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      } finally {
+        setExporting(null);
+      }
+    },
+    [run, question],
+  );
   const doneCount = run?.agents.filter((a) => a.phase === "done").length ?? 0;
   const failedCount =
     run?.agents.filter((a) => a.phase === "failed").length ?? 0;
@@ -640,6 +668,27 @@ export function CouncilView({
                 <span className="ml-auto font-mono text-[11px] text-ink-muted">
                   {verdict.servedBy}
                 </span>
+              )}
+              {verdict && (
+                <div className={`flex items-center gap-1 ${verdict.servedBy ? "" : "ml-auto"}`}>
+                  {(["pdf", "docx", "pptx", "xlsx"] as DocFormat[]).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => void exportRun(f)}
+                      disabled={exporting !== null}
+                      title={`Download this council run as ${f.toUpperCase()}`}
+                      className="flex items-center gap-1 rounded border border-line px-2 py-1 font-mono text-[10px] uppercase text-ink-muted transition hover:border-accent hover:text-accent disabled:opacity-50"
+                    >
+                      {exporting === f ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Download className="h-3 w-3" />
+                      )}
+                      {f}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 
