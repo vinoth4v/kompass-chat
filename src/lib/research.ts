@@ -32,7 +32,12 @@ export function extractFollowups(text: string): {
   text: string;
   followups?: string[];
 } {
-  const m = /^[ \t]*FOLLOWUPS:[ \t]*(.+)$/im.exec(text);
+  // Deliberately loose. Models wrap the marker in bold, prefix it with a
+  // bullet or a horizontal rule, and occasionally spell it "Follow-ups". A
+  // marker that leaks into the visible answer is worse than no chips at all.
+  const m = /^[ \t>*_-]*\**\s*follow[\s-]?ups?\**\s*:\s*\**[ \t]*(.+)$/im.exec(
+    text,
+  );
   if (!m) return { text };
   const followups = (m[1] ?? "")
     .split("|")
@@ -87,6 +92,7 @@ export async function runResearch(
    *  attachment before the request was built. */
   conversation: AnthropicMessageWire[],
   signal?: AbortSignal,
+  sessionId?: string,
 ): Promise<ResearchResult> {
   const history: AnthropicMessageWire[] = [...conversation];
   const sources: { title: string; url: string }[] = [];
@@ -107,6 +113,7 @@ export async function runResearch(
       {
         model: lane,
         max_tokens: 4096,
+        ...(sessionId ? { metadata: { user_id: sessionId } } : {}),
         system: RESEARCH_SYSTEM_PROMPT,
         messages: history,
         tools: TOOLS,
@@ -194,6 +201,8 @@ export async function runChatWithTools(
   lane: string,
   history: AnthropicMessageWire[],
   signal?: AbortSignal,
+  /** Conversation id — pins the whole chat to one model (see SendMessageRequest). */
+  sessionId?: string,
 ): Promise<ResearchResult> {
   const messages = [...history];
   const sources: { title: string; url: string }[] = [];
@@ -215,6 +224,7 @@ export async function runChatWithTools(
       {
         model: lane,
         max_tokens: 4096,
+        ...(sessionId ? { metadata: { user_id: sessionId } } : {}),
         system: CHAT_SYSTEM_PROMPT,
         messages,
         // Withhold tools on the final step so the turn always ends in an answer

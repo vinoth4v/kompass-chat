@@ -220,6 +220,7 @@ export default function Page() {
           lane,
           toWireMessages(messages),
           controller.signal,
+          conversationId,
         );
         appendAssistant(conversationId, {
           id: newId(),
@@ -242,6 +243,7 @@ export default function Page() {
           lane,
           toWireMessages(messages),
           controller.signal,
+          conversationId,
         );
         appendAssistant(conversationId, {
           id: newId(),

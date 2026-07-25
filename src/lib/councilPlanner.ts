@@ -221,38 +221,48 @@ export function planCouncil(
     });
   }
 
+  // Nothing healthy: still convene the council the user asked for, but on lane
+  // routing so the gateway picks per request. Seating ONE agent here was a bug
+  // — "5 agents" produced a single analyst and a judge waiting on it forever.
+  // Lane-routed seats each get an independent weighted draw, so this is still a
+  // council; it just cannot guarantee provider diversity.
   if (seats.length === 0) {
-    // Nothing healthy: fall back to lane routing and let the gateway decide,
-    // rather than refusing to convene at all.
     notes.push(
-      "No model currently has healthy capacity — falling back to automatic lane routing. " +
+      "No model currently has healthy capacity, so every seat is on automatic lane routing. " +
         "Expect failures until quotas or cooldowns recover.",
     );
     return {
-      seats: [
-        {
-          model: "kompass-agentic",
-          label: "Analyst A",
-          why: "fallback: lane routing",
-        },
-      ],
-      judge: {
-        model: "kompass-hard",
-        label: "Judge",
-        why: "fallback: lane routing",
-      },
+      seats: Array.from({ length: desiredSeats }, (_, i) => ({
+        model: "kompass-agentic",
+        label: SEAT_NAMES[i] ?? `Analyst ${i + 1}`,
+        why: "lane routing — no healthy model to pin",
+      })),
+      judge: { model: "kompass-hard", label: "Judge", why: "lane routing" },
       alternates: [],
       notes,
     };
   }
 
+  // Fewer healthy providers than seats requested: top the rest up with
+  // lane-routed seats rather than silently shrinking the council. The pinned
+  // seats keep their provider diversity; the extras get whatever the gateway
+  // can find, which is still a distinct draw per request.
   if (seats.length < desiredSeats) {
+    const pinned = seats.length;
+    for (let i = seats.length; i < desiredSeats; i++) {
+      seats.push({
+        model: "kompass-agentic",
+        label: SEAT_NAMES[i] ?? `Analyst ${i + 1}`,
+        why: "lane routing — no spare provider to pin",
+      });
+    }
     notes.push(
-      `Seated ${seats.length} of ${desiredSeats} requested: only ${usedProviders.size} provider${
-        usedProviders.size === 1 ? "" : "s"
-      } has healthy capacity right now. A smaller council that answers beats a larger one that starves.`,
+      `${pinned} seat${pinned === 1 ? "" : "s"} pinned to a distinct provider; the remaining ` +
+        `${desiredSeats - pinned} run on lane routing because only ${usedProviders.size} provider` +
+        `${usedProviders.size === 1 ? " has" : "s have"} healthy capacity right now.`,
     );
   }
+
   if (skippedCooling > 0) {
     notes.push(
       `${skippedCooling} model${skippedCooling === 1 ? "" : "s"} skipped — cooling down.`,

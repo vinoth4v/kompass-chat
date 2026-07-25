@@ -299,24 +299,6 @@ export function MessageBubble({
           <IconButton onClick={onDelete} title="Delete">
             <Trash2 size={14} />
           </IconButton>
-          {!isUser && (message.servedBy || message.usage) && (
-            <span className="ml-1 flex items-center gap-1.5 text-[0.72em] text-ink-faint">
-              {message.lane && (
-                <span className="rounded-full border border-line px-1.5 py-0.5">
-                  {message.lane}
-                </span>
-              )}
-              {message.servedBy && (
-                <span className="font-mono">{message.servedBy}</span>
-              )}
-              {message.usage && (
-                <span>
-                  {fmtTokens(message.usage.input)}→
-                  {fmtTokens(message.usage.output)} tok
-                </span>
-              )}
-            </span>
-          )}
         </div>
       </div>
     </div>

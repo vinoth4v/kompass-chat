@@ -61,6 +61,13 @@ export interface AnthropicToolWire {
 
 export interface SendMessageRequest {
   model: string;
+  /**
+   * Stable per-conversation id. The gateway keys model stickiness on
+   * `metadata.user_id`: without it, every turn re-rolls the lane's weighted
+   * pick, so a four-turn chat can be answered by four different models with
+   * four different styles — which reads as the assistant losing the thread.
+   */
+  metadata?: { user_id?: string };
   max_tokens: number;
   system?: string;
   messages: AnthropicMessageWire[];
