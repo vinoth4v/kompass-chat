@@ -153,6 +153,58 @@ export interface SendMessageResult {
   exhausted: boolean;
 }
 
+/**
+ * How long one model call may take before it is abandoned.
+ *
+ * Every tool fetch in this app has always been bounded — 12s for a search, 20s
+ * for a page — but the MODEL calls had no timeout at all, so a free model that
+ * stopped responding hung its caller forever. That is how a council seat sat at
+ * "thinking" for ten minutes: nothing was ever going to give up.
+ *
+ * Generous rather than tight: the gateway buffers a complete answer before
+ * replying and may fail over between providers internally, so a slow-but-alive
+ * request is normal. This is the point at which "slow" becomes "gone".
+ */
+export const REQUEST_TIMEOUT_MS = 75_000;
+
+/** Thrown when OUR deadline fired, as distinct from the user pressing stop. */
+export class KompassTimeoutError extends Error {
+  constructor(public readonly ms: number) {
+    super(`No response within ${Math.round(ms / 1000)}s.`);
+    this.name = "KompassTimeoutError";
+  }
+}
+
+/**
+ * One signal that aborts when either input does.
+ *
+ * Hand-rolled rather than AbortSignal.any(): that lands in Safari 17.4, and a
+ * council seat silently failing to start on a slightly older browser would be a
+ * poor trade for four saved lines.
+ */
+function combineSignals(
+  a: AbortSignal | undefined,
+  b: AbortSignal,
+): { signal: AbortSignal; done: () => void } {
+  if (!a) return { signal: b, done: () => {} };
+  const c = new AbortController();
+  const onA = () => c.abort(a.reason);
+  const onB = () => c.abort(b.reason);
+  if (a.aborted) onA();
+  else if (b.aborted) onB();
+  else {
+    a.addEventListener("abort", onA, { once: true });
+    b.addEventListener("abort", onB, { once: true });
+  }
+  return {
+    signal: c.signal,
+    done: () => {
+      a.removeEventListener("abort", onA);
+      b.removeEventListener("abort", onB);
+    },
+  };
+}
+
 export async function sendMessage(
   settings: KompassSettings,
   req: SendMessageRequest,
@@ -160,13 +212,30 @@ export async function sendMessage(
   /** Extra gateway headers — the Council uses x-kompass-model to pin one agent
    *  to one concrete model so the seats genuinely differ. */
   extraHeaders?: Record<string, string>,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<SendMessageResult> {
-  const res = await fetch(`${baseUrl(settings)}/v1/messages`, {
-    method: "POST",
-    headers: headers(settings, extraHeaders),
-    body: JSON.stringify(req),
-    signal,
-  });
+  // Never below a floor: a caller working through a near-exhausted budget could
+  // otherwise pass a millisecond and turn every request into an instant failure.
+  const budget = Math.max(5_000, timeoutMs);
+  const timeout = AbortSignal.timeout(budget);
+  const { signal: combined, done } = combineSignals(signal, timeout);
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl(settings)}/v1/messages`, {
+      method: "POST",
+      headers: headers(settings, extraHeaders),
+      body: JSON.stringify(req),
+      signal: combined,
+    });
+  } catch (e) {
+    // Distinguishing these matters: the user pressing stop must stay an
+    // AbortError so callers treat it as cancellation, while our own deadline
+    // has to surface as a failure the council can retry on another model.
+    if (timeout.aborted && !signal?.aborted) throw new KompassTimeoutError(budget);
+    throw e;
+  } finally {
+    done();
+  }
   if (!res.ok)
     throw new KompassApiError(res.status, await readErrorMessage(res));
   const response = (await res.json()) as AnthropicResponseWire;

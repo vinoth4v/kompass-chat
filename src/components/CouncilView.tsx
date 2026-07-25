@@ -122,6 +122,18 @@ function PhaseBadge({ agent }: { agent: AgentState }) {
 function AgentCard({ agent }: { agent: AgentState }) {
   const [open, setOpen] = useState(false);
   const busy = ["searching", "reading", "thinking"].includes(agent.phase);
+  // A seat only re-renders when its state changes, and a model call changes
+  // nothing while it runs — so a working seat and a hung one looked identical,
+  // both frozen on "thinking". This ticks, which is the difference between
+  // "waiting" and "broken" from the outside.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!busy) return;
+    const start = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => setElapsed(Date.now() - start), 1000);
+    return () => clearInterval(id);
+  }, [busy]);
   return (
     <div
       className={`flex flex-col rounded-xl border p-3 transition ${
@@ -141,7 +153,14 @@ function AgentCard({ agent }: { agent: AgentState }) {
             {agent.servedBy ?? agent.spec.model}
           </div>
         </div>
-        <PhaseBadge agent={agent} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          {busy && elapsed >= 5000 && (
+            <span className="font-mono text-[11px] tabular-nums text-ink-muted">
+              {Math.round(elapsed / 1000)}s
+            </span>
+          )}
+          <PhaseBadge agent={agent} />
+        </div>
       </div>
 
       {agent.detail && busy && (

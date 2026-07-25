@@ -14,6 +14,8 @@
 //      failure somewhere is the common case, not the exception. Every agent is
 //      settled independently and the judge works with whatever came back.
 import {
+  KompassTimeoutError,
+  REQUEST_TIMEOUT_MS,
   modelRequest,
   sendMessage,
   type AnthropicMessageWire,
@@ -87,6 +89,26 @@ export interface CouncilRun {
   judgeError?: string;
 }
 
+/**
+ * Wall-clock budgets. Iteration counts alone never bounded anything: an agent
+ * with four steps left and a model that answers in four minutes is a ten-minute
+ * seat, and the council waits for the slowest one.
+ *
+ *   agent  — one seat's whole research loop, first attempt
+ *   retry  — the second attempt on a different model, deliberately shorter:
+ *            the question is now "can anyone answer this", not "answer it well"
+ *   run    — hard ceiling on ALL seats. Whatever is still thinking when this
+ *            fires is abandoned and the judge works with what finished, which
+ *            is the entire point of a council that tolerates failure.
+ */
+const BUDGET: Record<ResearchDepth, { agent: number; retry: number; run: number }> = {
+  fast: { agent: 120_000, retry: 75_000, run: 210_000 },
+  deep: { agent: 240_000, retry: 90_000, run: 360_000 },
+};
+
+/** Judge budget. It reads and synthesizes rather than researching, so one call. */
+const JUDGE_TIMEOUT_MS = 90_000;
+
 const DEPTH: Record<ResearchDepth, { iterations: number; guidance: string }> = {
   fast: {
     iterations: 4,
@@ -154,8 +176,11 @@ async function runAgent(
   signal?: AbortSignal,
   /** Overrides the seat's model — used for the lane-routing retry. */
   modelOverride?: string,
+  /** Wall-clock this attempt may consume. */
+  budgetMs: number = BUDGET.deep.agent,
 ): Promise<void> {
   const started = Date.now();
+  const deadline = started + budgetMs;
   const { model, extraHeaders } = modelRequest(
     modelOverride ?? state.spec.model,
   );
@@ -178,6 +203,15 @@ async function runAgent(
     // seats previously spent every step searching and returned only the stub
     // "Reached the research step limit" — a wasted seat and nothing for the
     // judge to weigh. A grounded-in-what-you-have answer is always better.
+    // Out of time. An agent that has already gathered something keeps it — a
+    // partial finding still informs the judge — but one that has produced
+    // nothing throws, so the caller can retry it on a different model.
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      if (!state.answer && state.sources.length === 0)
+        throw new KompassTimeoutError(budgetMs);
+      break;
+    }
     const lastStep = iter === DEPTH[depth].iterations - 1;
     const { response, servedBy, exhausted } = await sendMessage(
       settings,
@@ -201,6 +235,8 @@ async function runAgent(
       },
       signal,
       extraHeaders,
+      // Never let one call outlive the seat's whole budget.
+      Math.min(REQUEST_TIMEOUT_MS, remaining),
     );
     // No model served this turn. The gateway says so with a 200 and a notice,
     // which is right for Claude Code and wrong for a council: rendering that
@@ -330,10 +366,13 @@ async function runAgent(
     emit();
   }
 
-  // Out of iterations: keep whatever was gathered rather than discarding the
-  // agent entirely — partial evidence still informs the judge.
+  // Out of iterations or out of time: keep whatever was gathered rather than
+  // discarding the agent entirely — partial evidence still informs the judge.
+  const ranOut = Date.now() >= deadline ? "time" : "step";
   state.answer =
-    "Reached the research step limit before concluding. Partial findings only — treat with caution.";
+    state.answer ??
+    `Reached the research ${ranOut} limit before concluding. Partial findings only — ` +
+      `treat with caution.`;
   state.phase = "done";
   state.elapsedMs = Date.now() - started;
   emit();
@@ -490,6 +529,7 @@ async function runJudge(
     },
     signal,
     extraHeaders,
+    JUDGE_TIMEOUT_MS,
   );
 
   if (exhausted) {
@@ -581,6 +621,21 @@ export async function runCouncil({
   // gateway's ledger pace them.
   const STAGGER_MS = 700;
 
+  // Hard ceiling on the research phase. Without it the council is only as fast
+  // as its slowest seat, and a seat that never returns means a run that never
+  // ends — five analysts, two finished, and the page thinking for ten minutes.
+  // The judge keeps the USER's signal, so abandoning the seats does not
+  // abandon the synthesis of what they did produce.
+  const seats = new AbortController();
+  const onUserAbort = () => seats.abort(signal?.reason);
+  signal?.addEventListener("abort", onUserAbort, { once: true });
+  let hardStopped = false;
+  const ceiling = setTimeout(() => {
+    hardStopped = true;
+    seats.abort(new KompassTimeoutError(BUDGET[depth].run));
+  }, BUDGET[depth].run);
+  const agentSignal = seats.signal;
+
   // allSettled, not all: a rejected agent must not take down the council.
   await Promise.allSettled(
     run.agents.map(async (state, i) => {
@@ -588,17 +643,33 @@ export async function runCouncil({
         if (i > 0) {
           await new Promise<void>((resolve, reject) => {
             const t = setTimeout(resolve, i * STAGGER_MS);
-            signal?.addEventListener("abort", () => {
+            agentSignal.addEventListener("abort", () => {
               clearTimeout(t);
               reject(new DOMException("aborted", "AbortError"));
             });
           });
         }
-        await runAgent(settings, state, question, depth, emit, signal);
+        await runAgent(
+          settings,
+          state,
+          question,
+          depth,
+          emit,
+          agentSignal,
+          undefined,
+          BUDGET[depth].agent,
+        );
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
           state.phase = "failed";
-          state.error = "cancelled";
+          // The seats' signal aborts for two different reasons and the user
+          // deserves to know which: they pressed stop, or this seat was still
+          // thinking when the council's ceiling ran out.
+          state.error = hardStopped
+            ? `Abandoned after ${Math.round(BUDGET[depth].run / 1000)}s — the council ` +
+              `stopped waiting so the judge could work with the seats that finished.`
+            : "cancelled";
+          state.detail = undefined;
           emit();
           throw e;
         }
@@ -607,8 +678,13 @@ export async function runCouncil({
         // seat outright — the router's whole fallback ladder is bypassed. Retry
         // once on lane routing: a seat that answers on a different model is far
         // better than an empty chair, and the card says it fell back.
+        // A timed-out seat earns a retry whether or not it was pinned: the
+        // model it landed on is demonstrably not answering this question, and a
+        // different one is the only thing left to try. Previously only pinned
+        // seats retried, so a lane-routed seat that hung was simply lost.
         const pinned = !state.spec.model.startsWith("kompass");
-        if (pinned && !state.fellBack) {
+        const timedOut = e instanceof KompassTimeoutError;
+        if ((pinned || timedOut) && !state.fellBack && !hardStopped) {
           state.fellBack = true;
           state.error = undefined;
           state.sources = [];
@@ -627,8 +703,9 @@ export async function runCouncil({
               question,
               depth,
               emit,
-              signal,
+              agentSignal,
               replacement ?? "kompass-agentic",
+              BUDGET[depth].retry,
             );
             return;
           } catch (e2) {
@@ -646,7 +723,24 @@ export async function runCouncil({
     }),
   );
 
+  clearTimeout(ceiling);
+  signal?.removeEventListener("abort", onUserAbort);
+  // The ceiling firing must NOT end the run — that is the whole point of it.
+  // Only the user pressing stop does.
   if (signal?.aborted) return run;
+  if (hardStopped) {
+    for (const a of run.agents) {
+      if (a.phase !== "done" && a.phase !== "failed") {
+        a.phase = "failed";
+        a.detail = undefined;
+        a.error =
+          a.error ??
+          `Still researching when the council's ${Math.round(BUDGET[depth].run / 1000)}s ` +
+            `limit was reached.`;
+      }
+    }
+    emit();
+  }
 
   const usable = run.agents.filter((a) => a.phase === "done" && a.answer);
   if (usable.length === 0) {

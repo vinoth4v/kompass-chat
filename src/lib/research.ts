@@ -19,6 +19,7 @@ import {
   researchSystemPrompt,
 } from "./prompts";
 import {
+  REQUEST_TIMEOUT_MS,
   modelRequest,
   sendMessage,
   type AnthropicMessageWire,
@@ -127,6 +128,13 @@ const CHAT_MAX_ITERATIONS = 4;
  * mid-sentence, having never stated a number. Room to think and then answer.
  */
 const MAX_TOKENS = 8192;
+
+/**
+ * Whole-turn ceiling. Six steps at the per-request limit would be seven minutes
+ * of spinner for a single reply; this ends the loop early and answers with what
+ * it has instead.
+ */
+const TURN_BUDGET_MS = 180_000;
 
 /**
  * Some models wrap their scratchpad in tags; some just start typing it.
@@ -243,6 +251,9 @@ async function runLoop(
   let pin: string | undefined;
   let repinned = false;
   const carried: string[] = [];
+  // A turn is bounded as a whole, not just per request: six steps that each
+  // take a slow-but-legal 70s is a seven-minute wait for one answer.
+  const deadline = Date.now() + TURN_BUDGET_MS;
 
   /** Assembled at every exit so both endings report the same way. */
   const finish = async (
@@ -301,6 +312,11 @@ async function runLoop(
 
     const { text, followups } = extractFollowups(body);
     const notices: string[] = [...carried];
+    if (Date.now() >= deadline)
+      notices.push(
+        `This turn hit its ${Math.round(TURN_BUDGET_MS / 1000)}s limit, so the answer was ` +
+          `assembled from what had been gathered by then rather than from finished research.`,
+      );
     if (truncated)
       notices.push(
         "The model hit its output limit — this answer is cut off, not finished.",
@@ -350,7 +366,10 @@ async function runLoop(
   // below re-runs the first step on a different model without consuming one.
   let iter = 0;
   while (iter < config.maxIterations) {
-    const lastStep = iter === config.maxIterations - 1;
+    // Out of time: treat it as the last step so the turn ends in an answer
+    // built from what was gathered, rather than another search.
+    const outOfTime = Date.now() >= deadline;
+    const lastStep = outOfTime || iter === config.maxIterations - 1;
     const wire = modelRequest(pin ?? lane);
     const {
       response,
@@ -369,6 +388,10 @@ async function runLoop(
       },
       signal,
       wire.extraHeaders,
+      // Same protection the council seats now have: without it a free model
+      // that stops responding leaves the composer spinning indefinitely, with
+      // no way out but reloading the page.
+      Math.max(15_000, Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())),
     );
     // The gateway answers 200 with a synthetic "no model could serve this"
     // notice, which is right for Claude Code and wrong here: rendering it as
