@@ -14,6 +14,7 @@
 //      failure somewhere is the common case, not the exception. Every agent is
 //      settled independently and the judge works with whatever came back.
 import {
+  modelRequest,
   sendMessage,
   type AnthropicMessageWire,
   type AnthropicTextBlockWire,
@@ -21,7 +22,10 @@ import {
   type AnthropicToolUseBlockWire,
 } from "./kompassClient";
 import type { KompassSettings } from "./types";
-import { TOOLS, executeTool, type Source } from "./tools";
+import { TOOLS, TOOL_NAMES, executeTool, type Source } from "./tools";
+import { extractObject, recoverToolCalls } from "./recoverToolCall";
+import { QUANTITATIVE_INSTRUCTION } from "./prompts";
+import { unbackedCitations } from "./research";
 
 export type { Source };
 
@@ -71,6 +75,9 @@ export interface CouncilVerdict {
   /** Set when the judge's structured block could not be parsed and its prose
    *  was used as-is — the UI says so rather than pretending it found nothing. */
   degraded?: boolean;
+  /** Problems with the verdict itself, e.g. a [n] citation backed by nothing.
+   *  Same check chat and research apply — a council is not exempt. */
+  notices?: string[];
 }
 
 export interface CouncilRun {
@@ -104,7 +111,11 @@ function agentSystemPrompt(depth: ResearchDepth): string {
     "say so explicitly and state which you find more credible and why. If the evidence is thin, " +
     "say that plainly — a hedged answer is far more useful to the council than a confident " +
     "invented one. Never cite a URL you did not fetch. " +
-    "Finish with a clear, self-contained answer in markdown."
+    "Finish with a clear, self-contained answer in markdown.\n\n" +
+    // The seats answer the question themselves, so they need the same rigour
+    // rules as chat and research — a council of five sloppy arithmeticians is
+    // still sloppy arithmetic.
+    QUANTITATIVE_INSTRUCTION
   );
 }
 
@@ -128,18 +139,11 @@ const JUDGE_SYSTEM_PROMPT =
   '{"agreements": ["..."], "disagreements": [{"point": "...", "positions": ["..."]}]}\n' +
   "Then, after the block, write the final synthesized answer in markdown. Cite sources inline " +
   "as [n] matching the numbered source list you were given. The final answer must stand on its " +
-  "own for someone who never sees the individual analyses.";
-
-/** Model id for the wire, plus the header that forces a concrete model. */
-function modelRequest(model: string): {
-  model: string;
-  extraHeaders?: Record<string, string>;
-} {
-  if (model.startsWith("kompass")) return { model };
-  // A concrete provider/model entry: the gateway honours x-kompass-model and
-  // skips lane selection entirely.
-  return { model: "kompass", extraHeaders: { "x-kompass-model": model } };
-}
+  "own for someone who never sees the individual analyses.\n\n" +
+  // The judge writes the answer the user actually reads, so if the question was
+  // quantitative it is the judge that has to get the number right — including
+  // adjudicating between analysts who computed different figures.
+  QUANTITATIVE_INSTRUCTION;
 
 async function runAgent(
   settings: KompassSettings,
@@ -212,9 +216,32 @@ async function runAgent(
     totalOut += response.usage.output_tokens;
     state.usage = { input: totalIn, output: totalOut };
 
-    const toolUses = response.content.filter(
+    let toolUses = response.content.filter(
       (b): b is AnthropicToolUseBlockWire => b.type === "tool_use",
     );
+
+    // Chat and Research recover tool calls a model printed as prose; the
+    // Council did not, so a seat that printed its web_fetch call as JSON handed
+    // that JSON to the judge as its finding — and the judge weighed it as an
+    // opinion. Same models, same failure, so the same recovery applies.
+    if (toolUses.length === 0 && !lastStep) {
+      const recovered = recoverToolCalls(
+        response.content
+          .filter((b): b is AnthropicTextBlockWire => b.type === "text")
+          .map((b) => b.text)
+          .join("\n\n"),
+        TOOL_NAMES,
+      );
+      if (recovered.calls.length > 0) {
+        toolUses = recovered.calls;
+        response.content = [
+          ...(recovered.text
+            ? [{ type: "text" as const, text: recovered.text }]
+            : []),
+          ...recovered.calls,
+        ];
+      }
+    }
 
     if (toolUses.length === 0) {
       const draft =
@@ -312,49 +339,108 @@ async function runAgent(
   emit();
 }
 
-/** Pull the judge's ```json block out, tolerating the usual model sloppiness. */
-function parseJudge(text: string): {
+/**
+ * Pull the judge's structure out, tolerating the usual model sloppiness.
+ *
+ * Only a fenced ```json block used to be accepted, so a judge that emitted the
+ * same object unfenced — which several of the free models do — was scored as
+ * unparseable and its RAW JSON was printed to the user as the final answer.
+ * The fence is now one of two places to look, not the only one.
+ */
+export function parseJudge(text: string): {
   agreements: string[];
   disagreements: Disagreement[];
   answer: string;
   degraded: boolean;
 } {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) {
+  for (const found of judgeJsonCandidates(text)) {
+    let parsed: { agreements?: unknown; disagreements?: unknown };
     try {
-      const parsed = JSON.parse(fence[1]!.trim()) as {
-        agreements?: unknown;
-        disagreements?: unknown;
-      };
-      const agreements = Array.isArray(parsed.agreements)
-        ? parsed.agreements.filter((a): a is string => typeof a === "string")
-        : [];
-      const disagreements = Array.isArray(parsed.disagreements)
-        ? parsed.disagreements
-            .filter(
-              (d): d is { point: unknown; positions: unknown } =>
-                !!d && typeof d === "object",
-            )
-            .map((d) => ({
-              point: typeof d.point === "string" ? d.point : "",
-              positions: Array.isArray(d.positions)
-                ? d.positions.filter((p): p is string => typeof p === "string")
-                : [],
-            }))
-            .filter((d) => d.point)
-        : [];
-      const answer = text.slice(fence.index! + fence[0].length).trim();
-      return {
-        agreements,
-        disagreements,
-        answer: answer || text,
-        degraded: false,
-      };
+      parsed = JSON.parse(found.json) as typeof parsed;
     } catch {
-      // fall through — a malformed block is not worth failing the whole run over
+      continue; // a malformed block is not worth failing the whole run over
     }
+    if (!parsed || typeof parsed !== "object") continue;
+    const agreements = Array.isArray(parsed.agreements)
+      ? parsed.agreements.filter((a): a is string => typeof a === "string")
+      : [];
+    const disagreements = Array.isArray(parsed.disagreements)
+      ? parsed.disagreements
+          .filter(
+            (d): d is { point: unknown; positions: unknown } =>
+              !!d && typeof d === "object",
+          )
+          .map((d) => ({
+            point: typeof d.point === "string" ? d.point : "",
+            positions: Array.isArray(d.positions)
+              ? d.positions.filter((p): p is string => typeof p === "string")
+              : [],
+          }))
+          .filter((d) => d.point)
+      : [];
+    if (agreements.length === 0 && disagreements.length === 0) continue;
+    // Whatever surrounds the structure is the prose answer. Taking only the
+    // tail meant a judge that wrote its answer BEFORE the block fell back to
+    // showing the block itself.
+    const answer = (
+      text.slice(0, found.start) +
+      "\n\n" +
+      text.slice(found.end)
+    ).trim();
+    return { agreements, disagreements, answer: answer || text, degraded: false };
   }
   return { agreements: [], disagreements: [], answer: text, degraded: true };
+}
+
+/** Places the verdict structure might be, best first: fenced, then bare. */
+function judgeJsonCandidates(
+  text: string,
+): { json: string; start: number; end: number }[] {
+  const out: { json: string; start: number; end: number }[] = [];
+  const fence = /```(?:json)?\s*([\s\S]*?)```/g;
+  let f: RegExpExecArray | null;
+  while ((f = fence.exec(text)) !== null) {
+    out.push({
+      json: f[1]!.trim(),
+      start: f.index,
+      end: f.index + f[0].length,
+    });
+  }
+  // Unfenced: anchor on the keys rather than on "{", since a judge's prose is
+  // full of braces, and brace-match so nested positions[] cannot end it early.
+  const anchor = /\{\s*"(?:agreements|disagreements)"\s*:/g;
+  let a: RegExpExecArray | null;
+  while ((a = anchor.exec(text)) !== null) {
+    const raw = extractObject(text, a.index);
+    if (raw) out.push({ json: raw, start: a.index, end: a.index + raw.length });
+  }
+  return out;
+}
+
+/**
+ * Re-parse a stored verdict whose structure was missed when it was produced.
+ *
+ * A council run is persisted whole — verdict included — so a run judged by the
+ * old fenced-block-only parser keeps its raw JSON answer forever, and fixing
+ * the parser does nothing for it: nothing re-parses on load. Every council
+ * conversation a user already has would still show the JSON. Applied on read,
+ * so old runs heal the first time they are opened.
+ */
+export function healVerdict(run: CouncilRun | null): CouncilRun | null {
+  const v = run?.verdict;
+  if (!run || !v?.degraded || !v.answer) return run;
+  const reparsed = parseJudge(v.answer);
+  if (reparsed.degraded) return run; // genuinely unstructured — leave it alone
+  return {
+    ...run,
+    verdict: {
+      ...v,
+      answer: reparsed.answer,
+      agreements: reparsed.agreements,
+      disagreements: reparsed.disagreements,
+      degraded: false,
+    },
+  };
 }
 
 async function runJudge(
@@ -417,6 +503,10 @@ async function runJudge(
     .map((b) => b.text)
     .join("\n\n");
   const parsed = parseJudge(text);
+  // The judge is handed a numbered source list and asked to cite [n] against
+  // it. Checking that the numbers resolve costs nothing and catches the case
+  // where a verdict reads as fully sourced while pointing at nothing.
+  const unbacked = unbackedCitations(parsed.answer, sources.length);
   return {
     answer: parsed.answer,
     agreements: parsed.agreements,
@@ -424,6 +514,13 @@ async function runJudge(
     sources,
     servedBy,
     degraded: parsed.degraded,
+    notices: unbacked.length
+      ? [
+          `The verdict cites ${unbacked.map((n) => `[${n}]`).join(", ")}, which ` +
+            `${unbacked.length === 1 ? "matches no source" : "match no sources"} ` +
+            `any agent actually read.`,
+        ]
+      : undefined,
   };
 }
 
@@ -573,6 +670,10 @@ export async function runCouncil({
   } catch (first) {
     if (first instanceof DOMException && first.name === "AbortError")
       throw first;
+    // Kept so the reason survives a failed retry. Without this the fallback
+    // below reported the bare string "judge failed", discarding the only
+    // sentence that told the user what to do about it.
+    run.judgeError = first instanceof Error ? first.message : String(first);
     // Same pinning trap the seats hit: a judge pinned to one model has a chain
     // of one, so a cooldown on it ends the whole council with the research
     // already done. Retry once on lane routing before giving up.

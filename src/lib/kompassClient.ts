@@ -178,6 +178,22 @@ export async function sendMessage(
   };
 }
 
+/**
+ * Model id for the wire, plus the header that forces a concrete model.
+ *
+ * A "kompass-*" name is a LANE: the gateway picks from that lane's chain and
+ * keeps its whole fallback ladder. A "provider/model" name is pinned via
+ * x-kompass-model, which gives the gateway a chain of exactly one — precise,
+ * but with no ladder left if that model is cooling. Callers pin deliberately.
+ */
+export function modelRequest(model: string): {
+  model: string;
+  extraHeaders?: Record<string, string>;
+} {
+  if (model.startsWith("kompass")) return { model };
+  return { model: "kompass", extraHeaders: { "x-kompass-model": model } };
+}
+
 export interface GenerateImageResult {
   b64: string;
   mime: string;

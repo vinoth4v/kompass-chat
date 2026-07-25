@@ -11,13 +11,63 @@ export function clip(s: string, max = MAX_OUTPUT): string {
     : s;
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  hellip: "…",
+  mdash: "—",
+  ndash: "–",
+  rsquo: "’",
+  lsquo: "‘",
+  ldquo: "“",
+  rdquo: "”",
+  middot: "·",
+  bull: "•",
+  deg: "°",
+  eacute: "é",
+  egrave: "è",
+  uuml: "ü",
+  ouml: "ö",
+  auml: "ä",
+  szlig: "ß",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+  euro: "€",
+  pound: "£",
+  times: "×",
+  frac12: "½",
+};
+
+/**
+ * Decode HTML entities to the characters they stand for.
+ *
+ * The previous version mapped every numeric entity to a SPACE, so `&#39;` —
+ * by far the most common one on the web — turned "don't" into "don t" and
+ * "Gandhi&#39;s" into "Gandhi s" in every snippet and every fetched page the
+ * models read. Quoting a mangled source accurately is impossible, so this is an
+ * accuracy fix rather than a cosmetic one.
+ */
 export function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x?\d+;/g, " ");
+  return s.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]{1,31});/g, (m, body: string) => {
+    if (body.startsWith("#")) {
+      const hex = body[1] === "x" || body[1] === "X";
+      const code = parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
+      // Lone surrogates and out-of-range values would throw; leave them as-is.
+      if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) return m;
+      if (code >= 0xd800 && code <= 0xdfff) return m;
+      try {
+        return String.fromCodePoint(code);
+      } catch {
+        return m;
+      }
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? m;
+  });
 }
 
 export interface SearchResult {
@@ -561,20 +611,229 @@ export async function webSearch(query: string): Promise<SearchResult[]> {
   return results;
 }
 
+// ── Fetching a page the model chose ─────────────────────────────────────────
+//
+// The URL comes from a model, which in turn got it from a search result or from
+// a page it just read — i.e. from the open internet. This function must
+// therefore treat the URL as hostile input, not as a trusted parameter.
+
+/** Hostnames that must never be fetched: this runs server-side, so a URL
+ *  pointing inward reaches things the browser could not. */
+export function isBlockedHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    h === "localhost" ||
+    h.endsWith(".localhost") ||
+    h.endsWith(".local") ||
+    h.endsWith(".internal") ||
+    h.endsWith(".home.arpa")
+  )
+    return true;
+  // IPv6 loopback, unique-local (fc00::/7) and link-local (fe80::/10).
+  if (h === "::1" || h === "::") return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(h)) return true;
+  if (/^fe[89ab][0-9a-f]:/.test(h)) return true;
+  // IPv4-mapped IPv6 (::ffff:169.254.169.254) — check the embedded address.
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h);
+  const v4 = mapped ? mapped[1]! : h;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(v4);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true; // link-local + cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a >= 224) return true; // multicast + reserved
+  return false;
+}
+
+/** Reject a URL before any request is made. Returns the reason, or null if ok. */
+export function rejectUrl(raw: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return "not a valid absolute URL";
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:")
+    return `unsupported scheme "${u.protocol}" — only http and https can be fetched`;
+  if (isBlockedHost(u.hostname))
+    return "refusing to fetch a private or loopback address";
+  return null;
+}
+
+/** Read a response body with a hard byte ceiling, so one enormous page cannot
+ *  exhaust the function's memory before the length is even known. */
+async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  const declared = Number(res.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > maxBytes * 4)
+    throw new Error(`response too large (${Math.round(declared / 1024)} KB)`);
+  const body = res.body;
+  if (!body) return (await res.text()).slice(0, maxBytes);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value);
+      total += value.byteLength;
+      if (total >= maxBytes) break;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    joined.set(c.subarray(0, Math.min(c.byteLength, total - at)), at);
+    at += c.byteLength;
+    if (at >= total) break;
+  }
+  return new TextDecoder("utf-8", { fatal: false }).decode(joined);
+}
+
+/** The page title, for citing a source by its name rather than by its URL. */
+export function extractTitle(html: string): string | undefined {
+  const og =
+    /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i.exec(
+      html,
+    );
+  const t = /<title[^>]*>([\s\S]{1,300}?)<\/title>/i.exec(html);
+  const raw = t?.[1] ?? og?.[1];
+  if (!raw) return undefined;
+  const clean = decodeEntities(raw.replace(/\s+/g, " ")).trim();
+  return clean || undefined;
+}
+
+/**
+ * HTML → readable text.
+ *
+ * The old version deleted every tag and collapsed all whitespace into single
+ * spaces, which handed the model one enormous line where the navigation, the
+ * cookie banner, the article and the footer were indistinguishable. Models
+ * quote such text badly and attribute it worse. Here: chrome is dropped rather
+ * than flattened, `<article>`/`<main>` wins when a page marks it, and block
+ * boundaries survive as newlines so paragraphs and list items stay separable.
+ */
+export function htmlToText(html: string): string {
+  let s = html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(
+      /<(script|style|noscript|svg|canvas|iframe|template|select)\b[^>]*>[\s\S]*?<\/\1>/gi,
+      " ",
+    );
+
+  const main =
+    /<article\b[^>]*>([\s\S]*?)<\/article>/i.exec(s) ??
+    /<main\b[^>]*>([\s\S]*?)<\/main>/i.exec(s);
+  // Only trust the marked-up main content when there is a real amount of it —
+  // some pages wrap a teaser in <main> and put the article beside it.
+  if (main && (main[1]?.length ?? 0) > 500) s = main[1]!;
+
+  s = s.replace(
+    /<(nav|header|footer|aside|form|figure)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    " ",
+  );
+
+  const text = s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "\n• ")
+    .replace(/<\/(p|div|section|li|tr|h[1-6]|blockquote|pre|td|th)>/gi, "\n")
+    // Quoted attribute values are skipped explicitly rather than treating the
+    // first ">" as the end of the tag. Modern pages hide JSON in attributes —
+    // Wikipedia's infobox does — and a naive /<[^>]+>/ ends the tag inside that
+    // JSON, spilling `}}"}},"i":0}}]}'>` into the text the model then reads as
+    // prose.
+    .replace(/<[a-zA-Z!/?](?:[^>"']|"[^"]*"|'[^']*')*>/g, " ");
+
+  return decodeEntities(text)
+    .replace(/[ \t ]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export interface FetchOutcome {
+  text: string;
+  /** The page's own title, when it has one — used to cite it by name. */
+  title?: string;
+  /** Where the redirect chain actually ended, which is what was really read. */
+  finalUrl: string;
+  truncated: boolean;
+}
+
+const MAX_FETCH_BYTES = 2_000_000;
+const MAX_REDIRECTS = 5;
+
+/**
+ * Fetch a page and return its readable text.
+ *
+ * Redirects are followed MANUALLY: `redirect: "follow"` would let a public URL
+ * bounce the request to a private address after the pre-flight check had
+ * already passed, which is the standard way an SSRF guard gets walked around.
+ * Every hop is re-validated.
+ */
+export async function webFetchDetailed(url: string): Promise<FetchOutcome> {
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const reason = rejectUrl(current);
+    if (reason) throw new Error(reason);
+    const res = await fetch(current, {
+      headers: {
+        "user-agent": BROWSER_UA,
+        accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+        "accept-language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(20_000),
+      redirect: "manual",
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) throw new Error(`HTTP ${res.status} with no location`);
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // A PDF or an image read as UTF-8 becomes mojibake, and a model handed
+    // mojibake does not report a failure — it invents plausible prose and cites
+    // the URL. Refusing outright is strictly more honest.
+    const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
+    if (ctype && !/text\/|html|xml|json|javascript/.test(ctype)) {
+      throw new Error(
+        `cannot read ${ctype.split(";")[0]} as text — this URL is not a web page`,
+      );
+    }
+
+    const body = await readCapped(res, MAX_FETCH_BYTES);
+    const text = /json|javascript/.test(ctype)
+      ? body
+      : /text\/plain/.test(ctype)
+        ? decodeEntities(body)
+        : htmlToText(body);
+
+    if (text.trim().length < 120) {
+      throw new Error(
+        "page returned almost no readable text (it may require JavaScript, " +
+          "or the request was challenged)",
+      );
+    }
+    return {
+      text: clip(text),
+      title: extractTitle(body),
+      finalUrl: current,
+      truncated: text.length > MAX_OUTPUT,
+    };
+  }
+  throw new Error(`too many redirects (>${MAX_REDIRECTS})`);
+}
+
+/** Text-only convenience wrapper, kept for callers that want just the body. */
 export async function webFetch(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: { "user-agent": "Mozilla/5.0 (Macintosh) KompassAI/1.0" },
-    signal: AbortSignal.timeout(20_000),
-    redirect: "follow",
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const html = await res.text();
-  const text = decodeEntities(
-    html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " "),
-  ).trim();
-  return clip(text);
+  return (await webFetchDetailed(url)).text;
 }

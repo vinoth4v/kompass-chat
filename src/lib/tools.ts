@@ -12,6 +12,7 @@
 // Citation rule, unchanged and load-bearing: a source is recorded only when a
 // fetch or a data lookup actually SUCCEEDS. Nothing is ever cited because a
 // model said it read it.
+import { evaluate, formatResult } from "./calc";
 import type { DocFormat, DocSection } from "./documents";
 import type {
   AnthropicToolResultBlockWire,
@@ -89,6 +90,29 @@ export const TOOLS: AnthropicToolWire[] = [
         },
       },
       required: ["kind", "query"],
+    },
+  },
+  {
+    name: "calculate",
+    description:
+      "Evaluate a mathematical expression exactly. Use this for EVERY non-trivial calculation — " +
+      "compound interest, growth over time, percentages, unit conversions, statistics — rather " +
+      "than working the arithmetic out in your reply, which is where numeric answers go wrong. " +
+      "Operators + - * / % ^ and parentheses; functions exp, ln, log10, sqrt, abs, pow, min, " +
+      "max, round(x,d), floor, ceil, mod, sin, cos, tan; constants pi and e. " +
+      "Series are supported: sum(k, from, to, expression) and prod(k, from, to, expression) " +
+      'bind k over an inclusive range — e.g. sum(k, 0, 359, 1500 * 1.025^floor(k/12)) totals a ' +
+      "monthly payment that rises 2.5% a year for 30 years. Call it repeatedly to build a " +
+      "result up in steps; do not round between steps.",
+    input_schema: {
+      type: "object",
+      properties: {
+        expression: {
+          type: "string",
+          description: "The expression to evaluate, e.g. 100000 * exp(0.07 * 30)",
+        },
+      },
+      required: ["expression"],
     },
   },
   {
@@ -205,8 +229,15 @@ export interface ToolHooks {
   onSearch?: (query: string) => void;
   onFetch?: (url: string) => void;
   onData?: (kind: string, query: string) => void;
+  onCalculate?: (expression: string) => void;
   /** Fired only on a SUCCESSFUL read — the moment a citation becomes honest. */
   onRead?: () => void;
+  /**
+   * Fired when a tool fails. The model is told, but the USER was not: a turn
+   * where every search backend refused looked identical to a well-researched
+   * one, because the only difference was inside a tool result nobody sees.
+   */
+  onToolError?: (tool: string, message: string) => void;
 }
 
 interface SearchResultJson {
@@ -216,6 +247,9 @@ interface SearchResultJson {
 }
 interface FetchResultJson {
   text?: string;
+  title?: string;
+  finalUrl?: string;
+  truncated?: boolean;
   error?: string;
 }
 interface DataResultJson {
@@ -227,12 +261,37 @@ interface DataResultJson {
 const err = (
   call: AnthropicToolUseBlockWire,
   msg: string,
-): AnthropicToolResultBlockWire => ({
-  type: "tool_result",
-  tool_use_id: call.id,
-  content: msg,
-  is_error: true,
-});
+  hooks: ToolHooks = {},
+): AnthropicToolResultBlockWire => {
+  hooks.onToolError?.(call.name, msg);
+  return {
+    type: "tool_result",
+    tool_use_id: call.id,
+    content: msg,
+    is_error: true,
+  };
+};
+
+/**
+ * Record a source and return its 1-based citation index.
+ *
+ * One place decides what counts as a citation, so the numbering the model is
+ * given and the numbering the user sees are the same list by construction.
+ * A URL already read keeps its original number rather than gaining a second.
+ */
+function cite(
+  sources: Source[],
+  seenUrls: Set<string>,
+  hooks: ToolHooks,
+  source: Source,
+): number {
+  const existing = sources.findIndex((s) => s.url === source.url);
+  if (existing >= 0) return existing + 1;
+  seenUrls.add(source.url);
+  sources.push(source);
+  hooks.onRead?.();
+  return sources.length;
+}
 
 export async function executeTool(
   call: AnthropicToolUseBlockWire,
@@ -253,15 +312,44 @@ export async function executeTool(
       });
       const json = (await res.json()) as SearchResultJson;
       if (!res.ok || !json.results)
-        return err(call, `search failed: ${json.error ?? res.status}`);
+        return err(call, `search failed: ${json.error ?? res.status}`, hooks);
+      if (json.results.length === 0)
+        return err(call, "search returned no results for that query", hooks);
       const summary = json.results
         .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
         .join("\n\n");
       return {
         type: "tool_result",
         tool_use_id: call.id,
-        content: summary || "no results",
+        // Spelled out because models routinely answer straight from snippets:
+        // a snippet is a search engine's summary, not the page.
+        content:
+          `${summary}\n\n(These are search snippets, not page contents. ` +
+          `Call web_fetch on the ones you intend to rely on.)`,
       };
+    }
+
+    if (call.name === "calculate") {
+      // Runs in the browser and needs no network: the answer is available
+      // before a request would have left the machine.
+      const expression = String(call.input.expression ?? "");
+      hooks.onCalculate?.(expression);
+      try {
+        const value = evaluate(expression);
+        return {
+          type: "tool_result",
+          tool_use_id: call.id,
+          content: `${expression} = ${formatResult(value)}`,
+        };
+      } catch (e) {
+        // The message names what was wrong with the expression, so the model
+        // can correct it rather than abandoning the calculation.
+        return err(
+          call,
+          `cannot evaluate "${expression}": ${e instanceof Error ? e.message : String(e)}`,
+          hooks,
+        );
+      }
     }
 
     if (call.name === "create_document") {
@@ -270,11 +358,11 @@ export async function executeTool(
       // no file — the whole document feature was advertised and dead.
       const format = String(call.input.format ?? "pdf") as DocFormat;
       if (!DOC_FORMATS.has(format)) {
-        return err(call, `unsupported format "${format}"`);
+        return err(call, `unsupported format "${format}"`, hooks);
       }
       const sections = Array.isArray(call.input.sections) ? call.input.sections : [];
       if (sections.length === 0) {
-        return err(call, "sections must be a non-empty array");
+        return err(call, "sections must be a non-empty array", hooks);
       }
       // Rendering happens in the browser: nothing is uploaded, and the object
       // URL is handed straight to a download link.
@@ -313,20 +401,26 @@ export async function executeTool(
         signal,
       });
       const json = (await res.json()) as FetchResultJson;
-      if (!res.ok)
-        return err(call, `fetch failed: ${json.error ?? res.status}`);
-      if (!seenUrls.has(url)) {
-        seenUrls.add(url);
-        sources.push({
-          title: url.replace(/^https?:\/\//, "").slice(0, 80),
-          url,
-        });
-        hooks.onRead?.();
-      }
+      if (!res.ok || !json.text)
+        return err(call, `fetch failed: ${json.error ?? res.status}`, hooks);
+      // Cite what was actually read: a redirect chain means the URL the model
+      // asked for is not necessarily the page it got.
+      const readUrl = json.finalUrl ?? url;
+      const index = cite(sources, seenUrls, hooks, {
+        title: json.title ?? readUrl.replace(/^https?:\/\//, "").slice(0, 80),
+        url: readUrl,
+      });
       return {
         type: "tool_result",
         tool_use_id: call.id,
-        content: json.text ?? "",
+        // The citation index is handed back with the content so the model can
+        // write [n] and have it resolve against the list the user is shown.
+        // Without it the "Sources" list under an answer asserted a link between
+        // text and source that nothing had established.
+        content:
+          `Source [${index}] — ${json.title ?? readUrl}\n${readUrl}\n` +
+          `Cite this as [${index}] when you use it.\n\n${json.text}` +
+          (json.truncated ? "\n\n(Page was truncated.)" : ""),
       };
     }
 
@@ -347,26 +441,35 @@ export async function executeTool(
       });
       const json = (await res.json()) as DataResultJson;
       if (!res.ok || !json.text)
-        return err(call, `${kind} lookup failed: ${json.error ?? res.status}`);
+        return err(
+          call,
+          `${kind} lookup failed: ${json.error ?? res.status}`,
+          hooks,
+        );
       // A successful structured lookup is a real, citable source — the same
       // standard applied to a fetched page.
       const url = `kompass:${kind}/${encodeURIComponent(query)}`;
-      if (!seenUrls.has(url)) {
-        seenUrls.add(url);
-        sources.push({ title: `${json.source ?? kind} — ${query}`, url });
-        hooks.onRead?.();
-      }
+      const index = cite(sources, seenUrls, hooks, {
+        title: `${json.source ?? kind} — ${query}`,
+        url,
+      });
       return {
         type: "tool_result",
         tool_use_id: call.id,
-        content: `${json.text}\n\n(source: ${json.source ?? kind})`,
+        content:
+          `${json.text}\n\n(Source [${index}]: ${json.source ?? kind}. ` +
+          `Cite this as [${index}].)`,
       };
     }
 
-    return err(call, `unknown tool "${call.name}"`);
+    return err(call, `unknown tool "${call.name}"`, hooks);
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;
-    return err(call, `${call.name} failed: ${String(e).slice(0, 200)}`);
+    return err(
+      call,
+      `${call.name} failed: ${String(e instanceof Error ? e.message : e).slice(0, 200)}`,
+      hooks,
+    );
   }
 }
 

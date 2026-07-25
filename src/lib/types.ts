@@ -82,6 +82,13 @@ export interface ChatMessage {
   error?: boolean;
   /** Research mode: sources cited in this reply. */
   sources?: { title: string; url: string }[];
+  /**
+   * What the user should know about how this answer was produced: a search that
+   * failed, an answer cut off at the token limit, a citation with no source
+   * behind it. Shown above the answer — an unsourced answer that looks exactly
+   * like a researched one is the failure mode worth designing against.
+   */
+  notices?: string[];
   /** Suggested next questions, parsed out of the reply (see research.ts). */
   followups?: string[];
   /** Files produced by create_document, offered as downloads. */

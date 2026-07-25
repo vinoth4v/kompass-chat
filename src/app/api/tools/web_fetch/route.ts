@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { webFetch } from "@/lib/scrape";
+import { rejectUrl, webFetchDetailed } from "@/lib/scrape";
 
 export async function POST(req: Request) {
   let body: { url?: string };
@@ -14,12 +14,20 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  // Rejected before the request is made, and reported as a 400 rather than a
+  // 502: a model pointing this route at localhost is a bad request, not an
+  // upstream failure, and the distinction matters when reading logs.
+  const refusal = rejectUrl(body.url);
+  if (refusal) return NextResponse.json({ error: refusal }, { status: 400 });
+
   try {
-    const text = await webFetch(body.url);
-    return NextResponse.json({ text });
+    const { text, title, finalUrl, truncated } = await webFetchDetailed(
+      body.url,
+    );
+    return NextResponse.json({ text, title, finalUrl, truncated });
   } catch (e) {
     return NextResponse.json(
-      { error: String(e).slice(0, 300) },
+      { error: String(e instanceof Error ? e.message : e).slice(0, 300) },
       { status: 502 },
     );
   }

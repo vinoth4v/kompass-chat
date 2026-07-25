@@ -1,5 +1,6 @@
 "use client";
 import {
+  AlertTriangle,
   Check,
   Copy,
   Cpu,
@@ -155,6 +156,22 @@ export function MessageBubble({
                   : "w-full") + " max-w-full"
             }
           >
+            {/* Above the answer, deliberately. A caveat placed underneath is
+                read after the reader has already believed the answer. */}
+            {!isUser && !!message.notices?.length && (
+              <div className="mb-3 flex flex-col gap-1.5">
+                {message.notices.map((n, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 rounded-xl border border-warn/40 bg-warn-soft px-3 py-2 text-[0.8rem] leading-snug text-warn"
+                  >
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span>{n}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {message.generatedImage ? (
               <div className="flex flex-col gap-2">
                 {message.text && (

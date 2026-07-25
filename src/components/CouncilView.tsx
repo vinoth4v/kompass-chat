@@ -26,6 +26,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  healVerdict,
   runCouncil,
   type AgentSpec,
   type AgentState,
@@ -258,7 +259,10 @@ export function CouncilView({
   // component on the conversation id, so switching conversations remounts it.
   const [question, setQuestion] = useState(session?.question ?? "");
   const [run, setRun] = useState<CouncilRun | null>(
-    (session?.run as CouncilRun | undefined) ?? null,
+    // Healed on read: a run judged before the parser understood unfenced JSON
+    // has the raw structure sitting in its answer, and nothing would ever
+    // re-parse it. Opening the conversation repairs it.
+    () => healVerdict((session?.run as CouncilRun | undefined) ?? null),
   );
   const [busy, setBusy] = useState(false);
   // A finished run is the answer; the setup panel would push it off screen.
@@ -713,6 +717,16 @@ export function CouncilView({
                     {failedCount} failed. Weigh accordingly.
                   </div>
                 )}
+
+                {verdict.notices?.map((n, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-warn"
+                  >
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{n}</span>
+                  </div>
+                ))}
 
                 {verdict.degraded && (
                   <div className="rounded-md bg-surface px-3 py-2 text-xs text-ink-muted">

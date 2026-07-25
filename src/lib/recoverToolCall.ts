@@ -30,7 +30,7 @@ export interface RecoveredCall {
  * A regex cannot do this — `create_document` arguments nest several levels and
  * routinely contain braces inside prose.
  */
-function extractObject(s: string, open: number): string | null {
+export function extractObject(s: string, open: number): string | null {
   let depth = 0;
   let inStr = false;
   let escaped = false;
