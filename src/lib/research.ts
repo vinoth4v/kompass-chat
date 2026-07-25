@@ -275,7 +275,12 @@ export async function runChatWithTools(
   }
 
   return {
-    text: "(no answer)",
+    // Reached the iteration ceiling with no final text. Saying "(no answer)"
+    // told the user nothing about why — this at least names the failure and
+    // what to do about it.
+    text:
+      "I ran out of research steps before producing an answer. Try asking again, " +
+      "or narrow the question — the model kept calling tools without concluding.",
     sources,
     usage: { input: totalIn, output: totalOut },
     servedBy,
