@@ -109,6 +109,13 @@ const BUDGET: Record<ResearchDepth, { agent: number; retry: number; run: number 
 /** Judge budget. It reads and synthesizes rather than researching, so one call. */
 const JUDGE_TIMEOUT_MS = 90_000;
 
+/**
+ * Waits before each judge retry. Nothing before the first attempt; then long
+ * enough for a per-minute quota window to roll over, because "lanes exhausted"
+ * after five seats have just run is a timing problem, not a permanent one.
+ */
+export const JUDGE_RETRY_WAITS_MS = [0, 12_000, 30_000, 30_000];
+
 const DEPTH: Record<ResearchDepth, { iterations: number; guidance: string }> = {
   fast: {
     iterations: 4,
@@ -564,6 +571,140 @@ async function runJudge(
   };
 }
 
+/**
+ * Run the judge, persistently.
+ *
+ * Exhaustion is the expected failure here, not a freak one: five seats research
+ * in parallel and burn the free tier's per-minute allowance, and only THEN does
+ * the judge ask for a model. Retrying instantly on another model — which is
+ * what it used to do — asks the same drained providers the same question a
+ * second later. So: several distinct models, with waits between them long
+ * enough for a per-minute window to roll over.
+ *
+ * The research is the expensive part and it is already done. Failing to
+ * synthesize must never throw it away.
+ */
+async function deliberate({
+  settings,
+  question,
+  run,
+  usable,
+  judgeModel,
+  candidates,
+  emit,
+  signal,
+  waitsMs = JUDGE_RETRY_WAITS_MS,
+}: {
+  settings: KompassSettings;
+  question: string;
+  run: CouncilRun;
+  usable: AgentState[];
+  judgeModel: string;
+  candidates: string[];
+  emit: () => void;
+  signal?: AbortSignal;
+  /** Overridable so tests can exercise the retry ladder without waiting a
+   *  minute for it; production always uses the real schedule. */
+  waitsMs?: number[];
+}): Promise<void> {
+  // Distinct models first, then the lanes — a lane can still find something the
+  // pinned entries cannot, because it walks its own chain.
+  const attempts = [
+    ...new Set([judgeModel, ...candidates, "kompass-agentic", "kompass-hard"]),
+  ];
+  // Nothing before the first attempt; a real pause before each retry. Free-tier
+  // limits are per minute, so waiting is a genuine strategy rather than a stall.
+  const waits = waitsMs;
+
+  let lastError = "";
+  for (let i = 0; i < attempts.length; i++) {
+    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    if (waits[i]) {
+      run.judgeError =
+        `${lastError} Waiting ${Math.round(waits[i]! / 1000)}s for quota to recover, ` +
+        `then retrying on ${attempts[i]}…`;
+      emit();
+      await sleep(waits[i]!, signal);
+    }
+    try {
+      run.verdict = await runJudge(
+        settings,
+        attempts[i]!,
+        question,
+        usable,
+        signal,
+      );
+      run.judgePhase = "done";
+      run.judgeError = undefined;
+      emit();
+      return;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      lastError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  // Every model refused. Rather than showing the user nothing, hand back the
+  // best-evidenced analyst answer as a PROVISIONAL verdict, labelled as one.
+  // Five researched answers and an error message is a worse outcome than five
+  // researched answers and the strongest of them, clearly marked unsynthesized.
+  run.judgePhase = "failed";
+  run.judgeError = lastError || "The judge could not be run.";
+  run.verdict = provisionalVerdict(usable);
+  emit();
+}
+
+/** Abortable sleep — a pending retry must still respond to the stop button. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(t);
+        reject(new DOMException("aborted", "AbortError"));
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * A verdict assembled without a model, for when no model can be had.
+ *
+ * Explicitly NOT a synthesis, and says so: it is one analyst's answer, chosen
+ * for having read the most pages, with every seat's sources behind it. Claiming
+ * more than that would be the exact dishonesty the council exists to avoid.
+ */
+function provisionalVerdict(usable: AgentState[]): CouncilVerdict {
+  const best = [...usable].sort(
+    (a, b) => b.reads - a.reads || b.sources.length - a.sources.length,
+  )[0]!;
+  const sources: Source[] = [];
+  const seen = new Set<string>();
+  for (const a of usable)
+    for (const s of a.sources)
+      if (!seen.has(s.url)) {
+        seen.add(s.url);
+        sources.push(s);
+      }
+  return {
+    answer: best.answer ?? "",
+    agreements: [],
+    disagreements: [],
+    sources,
+    servedBy: best.servedBy ?? best.spec.model,
+    degraded: true,
+    notices: [
+      `No model could be reached to synthesize the ${usable.length} analyst answers, so this ` +
+        `is ${best.spec.label}'s answer on its own — the seat that read the most pages ` +
+        `(${best.reads}). It has NOT been weighed against the others, and no disagreement ` +
+        `between them has been checked. Read the individual findings above, or retry the ` +
+        `synthesis once quota recovers.`,
+    ],
+  };
+}
+
 export interface CouncilOptions {
   settings: KompassSettings;
   question: string;
@@ -752,52 +893,66 @@ export async function runCouncil({
 
   run.judgePhase = "deliberating";
   emit();
-  try {
-    run.verdict = await runJudge(
-      settings,
-      judgeModel,
-      question,
-      usable,
-      signal,
-    );
-    run.judgePhase = "done";
-  } catch (first) {
-    if (first instanceof DOMException && first.name === "AbortError")
-      throw first;
-    // Kept so the reason survives a failed retry. Without this the fallback
-    // below reported the bare string "judge failed", discarding the only
-    // sentence that told the user what to do about it.
-    run.judgeError = first instanceof Error ? first.message : String(first);
-    // Same pinning trap the seats hit: a judge pinned to one model has a chain
-    // of one, so a cooldown on it ends the whole council with the research
-    // already done. Retry once on lane routing before giving up.
-    try {
-      if (judgeModel.startsWith("kompass")) throw first;
-      run.verdict = await runJudge(
-        settings,
-        claimSpare() ?? "kompass-agentic",
-        question,
-        usable,
-        signal,
-      );
-      run.judgePhase = "done";
-      run.judgeError = undefined;
-      emit();
-      return run;
-    } catch {
-      /* fall through to the original failure below */
-    }
-  }
-  if (run.judgePhase !== "done") {
-    try {
-      throw new Error(run.judgeError ?? "judge failed");
-    } catch (e) {
-      run.judgePhase = "failed";
-      run.judgeError = e instanceof Error ? e.message : String(e);
-      // A dead judge must not throw away the research: the UI still shows every
-      // agent's answer and sources, which is most of the value.
-    }
-  }
+  await deliberate({
+    settings,
+    question,
+    run,
+    usable,
+    judgeModel,
+    candidates: [claimSpare(), claimSpare()].filter(
+      (m): m is string => typeof m === "string",
+    ),
+    emit,
+    signal,
+  });
   emit();
   return run;
+}
+
+/**
+ * Re-run synthesis on a finished run, without repeating the research.
+ *
+ * The seats are the expensive part — five models, minutes of wall clock, real
+ * quota. When only the judge fails, making the user convene the whole council
+ * again to recover from a transient per-minute limit would be absurd. This
+ * re-judges the answers already on the run.
+ */
+export async function retryJudge(
+  settings: KompassSettings,
+  question: string,
+  run: CouncilRun,
+  judgeModel: string,
+  onUpdate: (run: CouncilRun) => void,
+  signal?: AbortSignal,
+  waitsMs?: number[],
+): Promise<CouncilRun> {
+  const next: CouncilRun = { ...run, agents: run.agents.map((a) => ({ ...a })) };
+  const usable = next.agents.filter((a) => a.phase === "done" && a.answer);
+  const emit = () =>
+    onUpdate({ ...next, agents: next.agents.map((a) => ({ ...a })) });
+  if (usable.length === 0) {
+    next.judgePhase = "failed";
+    next.judgeError = "No analyst answers to synthesize.";
+    emit();
+    return next;
+  }
+  next.judgePhase = "deliberating";
+  next.judgeError = undefined;
+  // Drop the provisional verdict: keeping it on screen while a real one is
+  // being produced would show two different answers at once.
+  next.verdict = undefined;
+  emit();
+  await deliberate({
+    settings,
+    question,
+    run: next,
+    usable,
+    judgeModel,
+    candidates: [],
+    emit,
+    signal,
+    waitsMs,
+  });
+  emit();
+  return next;
 }

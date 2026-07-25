@@ -26,6 +26,7 @@ import {
 import { Markdown } from "./Markdown";
 import {
   healVerdict,
+  retryJudge,
   runCouncil,
   type AgentSpec,
   type AgentState,
@@ -424,6 +425,31 @@ export function CouncilView({
     },
     [run, question],
   );
+  const rejudge = useCallback(async () => {
+    if (!run || busy) return;
+    setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await retryJudge(
+        settings,
+        question,
+        run,
+        judgeModel,
+        (next) => {
+          setRun(next);
+          persist(next, question);
+        },
+        controller.signal,
+      );
+    } catch {
+      /* cancellation, or a failure already recorded on the run */
+    } finally {
+      setBusy(false);
+      abortRef.current = null;
+    }
+  }, [run, busy, settings, question, judgeModel, persist]);
+
   const doneCount = run?.agents.filter((a) => a.phase === "done").length ?? 0;
   const failedCount =
     run?.agents.filter((a) => a.phase === "failed").length ?? 0;
@@ -715,12 +741,25 @@ export function CouncilView({
             {run.judgeError && (
               <div className="mt-3 flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-xs text-danger">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <div>
+                <div className="min-w-0 flex-1">
                   {run.judgeError}
                   <div className="mt-1 text-danger">
                     The individual findings above are unaffected — the research
                     still stands.
                   </div>
+                  {/* Re-judging costs one request; re-convening costs five
+                      agents and minutes of quota. When only the judge failed —
+                      usually because the seats just drained the per-minute
+                      allowance — the research must not have to be repeated. */}
+                  {run.judgePhase === "failed" && !busy && (
+                    <button
+                      onClick={rejudge}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-danger/40 px-2.5 py-1 font-medium text-danger transition hover:bg-danger/10"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Retry synthesis
+                    </button>
+                  )}
                 </div>
               </div>
             )}
